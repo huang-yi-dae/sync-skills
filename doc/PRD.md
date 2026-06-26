@@ -602,3 +602,40 @@ Rust 后端通过 `#[tauri::command]` 暴露以下接口给 React 前端：
 | M2 核心同步 | M（5-8 天） | 8-13 天 |
 | M3 完善体验 | S（3-5 天） | 11-18 天 |
 | **总计** | | **2-4 周** |
+
+## 附录 A：术语表
+
+| 术语 | 说明 |
+|------|------|
+| Skill | 基于 SKILL.md 文件的 AI 编码助手插件，包含 YAML front matter（name + description）和附属文件 |
+| SSOT | Single Source of Truth，单一信息源。本应用中指 `~/.agents/skills/` 目录 |
+| content_hash | Skill 目录的全量文件 SHA-256 哈希，用于检测内容变化 |
+| ID 哈希 | SHA-256 前 8 字节按 little-endian 解析的有符号 64 位整数，用作数据库主键 |
+| front matter | SKILL.md 文件头部的 YAML 元数据块（`---` 包裹），包含 name 和 description |
+| 全局 | 与特定项目无关的操作范围，对应 projects 表中 id=0 的内置项目 |
+| 项目 | 用户手动添加的开发项目，有独立的路径和 Skill 配置 |
+| 工具 | 支持 Skill 的 AI 编码助手（Claude Code、Codex CLI 等） |
+| 双向同步 | 工具目录 ↔ SSOT 的双向文件同步，仅适用于本地 Skill |
+| 单向同步 | 仅从 SSOT → 工具目录的文件同步，适用于远端 Skill（post-MVP） |
+| local.md | 本地 Skill 的标记文件，存在于 Skill 目录下表示该 Skill 走双向同步逻辑 |
+| Tauri Command | Tauri v2 的 IPC 机制，Rust 后端通过 `#[tauri::command]` 暴露函数给前端 |
+
+## 附录 B：参考资料
+
+- 设计讨论文档：`doc/map.md`
+- 数据库 DDL：`doc/skill-manager-ddl.sql`
+- Tauri v2 官方文档：https://v2.tauri.app/
+- Tauri v2 SQL 插件：https://v2.tauri.app/plugin/sql/
+- rusqlite 文档：https://docs.rs/rusqlite/
+- CC Switch 项目：远程拉取 Skill 的参考实现（post-MVP 参照）
+
+## 附录 C：PRD 变更日志
+
+| 日期 | 版本 | 变更内容 |
+|------|------|---------|
+| 2026-06-26 | v0.1 | 初稿：§1-12（产品概述、功能需求、非功能需求、架构、约束、后置功能） |
+| 2026-06-26 | v0.2 | Phase 1 差距修复：§5.3 边界情况、§5.5 SSOT 结构 + local.md 机制、§5.7 继承描述、§7 触发入口 |
+| 2026-06-26 | v0.3 | Phase 2 补全：§13 验收用例、§14 路径边界、§15 错误处理、§16 UI 交互 |
+| 2026-06-26 | v0.4 | Phase 3 技术评审：§17 技术栈评估、IPC 接口清单、SQLite 选型、跨平台策略 |
+| 2026-06-26 | v0.5 | Phase 4 里程碑：§18 依赖图、3 个里程碑、风险评估、工作量估算 |
+| 2026-06-26 | v1.0 | Phase 5 定稿：补充附录 A 术语表、B 参考资料、C 变更日志 |

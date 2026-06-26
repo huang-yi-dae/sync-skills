@@ -39,19 +39,19 @@ Phase 5
 - **Status:** complete
 
 ### Phase 5: PRD 定稿与交付
-- [ ] 整合所有修订，生成 PRD 终版
-- [ ] 补充附录（术语表、参考资料、设计决策记录）
-- [ ] 创建 PRD 变更日志
-- [ ] 交付 PRD.md + task_plan.md + findings.md + progress.md
-- **Status:** pending
+- [x] 整合所有修订，生成 PRD 终版（18 节 + 3 附录）
+- [x] 补充附录（术语表 12 项、参考资料 6 项、变更日志 6 版）
+- [x] 创建 PRD 变更日志（附录 C）
+- [x] 交付 PRD.md + task_plan.md + findings.md + progress.md
+- **Status:** complete
 
 ## Key Questions
 
-1. PRD 中的"本地 Skill 双向同步"是否需要在 MVP 中完整实现，还是可以先做单向同步？
-2. 路径格式容错是否需要支持符号链接和 UNC 路径（`\\server\share\...`）？
-3. UI 框架选择：纯 React 还是需要引入 UI 组件库（shadcn/ui、Ant Design）？
-4. SQLite 集成方式：tauri-plugin-sql（异步、开箱即用）还是 rusqlite（更灵活、需手动管理）？
-5. 是否需要为 PRD 添加原型图或线框图？
+1. ~~PRD 中的"本地 Skill 双向同步"是否需要在 MVP 中完整实现？~~ → **是，完整实现（§5.5）**
+2. ~~路径格式容错是否需要支持 UNC 路径？~~ → **是，支持（§14.1）**
+3. ~~UI 框架选择？~~ → **待定，实现阶段决定（M3 阶段）**
+4. ~~SQLite 集成方式？~~ → **rusqlite（§17.2 决策）**
+5. ~~是否需要原型图？~~ → **MVP 不需要，§16 UI 交互规范足够**
 
 ## Decisions Made
 

@@ -71,11 +71,17 @@
   - `plan/progress.md` (updated)
 
 ### Phase 5: PRD 定稿与交付
-- **Status:** pending
+- **Status:** complete
 - Actions taken:
-  - （尚未开始）
-- Files created/modified:
-  - （无）
+  - 补充附录 A 术语表（12 项核心术语）
+  - 补充附录 B 参考资料（6 项参考链接）
+  - 创建附录 C 变更日志（v0.1 → v1.0，6 个版本迭代记录）
+  - PRD 终版：18 节 + 3 附录，约 450 行
+  - 所有 5 个 Key Questions 已标记为已解决
+- Files modified:
+  - `doc/PRD.md` (+附录 A/B/C)
+  - `plan/task_plan.md` (Phase 5 → complete, all questions resolved)
+  - `plan/progress.md` (final update)
 
 ## Test Results
 
@@ -94,11 +100,11 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 1 complete, Phase 2-5 pending |
-| Where am I going? | Phase 2: 功能细化与验收标准补全 |
-| What's the goal? | 将 map.md 和 DDL 转化为完整可执行的 MVP PRD |
-| What have I learned? | See findings.md |
-| What have I done? | See above |
+| Where am I? | All 5 phases complete. PRD v1.0 delivered. |
+| Where am I going? | Ready for implementation. Start with M1 (基础能力). |
+| What's the goal? | ~~将 map.md 和 DDL 转化为完整可执行的 MVP PRD~~ ✅ Done |
+| What have I learned? | See findings.md (gap analysis, tech decisions, risk assessment) |
+| What have I done? | See above (5 phases, 6 commits, PRD 18 sections + 3 appendices) |
 
 ---
 
