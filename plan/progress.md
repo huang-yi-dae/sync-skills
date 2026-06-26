@@ -57,11 +57,18 @@
   - `plan/progress.md` (updated)
 
 ### Phase 4: 优先级排序与里程碑划分
-- **Status:** pending
+- **Status:** complete
 - Actions taken:
-  - （尚未开始）
-- Files created/modified:
-  - （无）
+  - 绘制功能依赖关系图（§18.1）
+  - 划分 3 个里程碑：M1 基础能力(S) → M2 核心同步(M) → M3 完善体验(S)
+  - 为每个里程碑定义验证标准和功能对应表（§18.2）
+  - 识别 5 项技术风险及缓解措施（§18.3）
+  - 估算总工作量：2-4 周（§18.4）
+  - 关键路径：DB → 扫描 → 同步 → 完善
+- Files modified:
+  - `doc/PRD.md` (+§18 开发里程碑)
+  - `plan/task_plan.md` (Phase 4 → complete)
+  - `plan/progress.md` (updated)
 
 ### Phase 5: PRD 定稿与交付
 - **Status:** pending

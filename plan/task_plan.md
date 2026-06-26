@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 4
+Phase 5
 
 ## Phases
 
@@ -32,11 +32,11 @@ Phase 4
 - **Status:** complete
 
 ### Phase 4: 优先级排序与里程碑划分
-- [ ] 将 MVP 功能按依赖关系排序
-- [ ] 划分 2-3 个开发里程碑（每个里程碑可独立交付验证）
-- [ ] 识别技术风险和关键路径
-- [ ] 估算工作量（粗略 T-shirt sizing）
-- **Status:** pending
+- [x] 将 MVP 功能按依赖关系排序
+- [x] 划分 3 个开发里程碑（M1 基础能力 / M2 核心同步 / M3 完善体验）
+- [x] 识别技术风险和关键路径（5 项风险 + 缓解措施）
+- [x] 估算工作量（总计 2-4 周）
+- **Status:** complete
 
 ### Phase 5: PRD 定稿与交付
 - [ ] 整合所有修订，生成 PRD 终版
