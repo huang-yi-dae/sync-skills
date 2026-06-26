@@ -1,0 +1,28 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build output
+target/
+dist/
+build/
+node_modules/
+
+# Tauri
+src-tauri/target/
+
+# Temp files
+*.tmp
+.tmp-*
+
+# Database
+*.db
+*.db-journal
+*.db-wal
