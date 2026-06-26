@@ -31,11 +31,16 @@
   - 5 个差距已修复并合入 PRD ✅
 
 ### Phase 2: 功能细化与验收标准补全
-- **Status:** pending
+- **Status:** complete
 - Actions taken:
-  - （尚未开始）
-- Files created/modified:
-  - （无）
+  - 为 5 大功能领域编写验收用例（§13，共 22 条输入→预期输出）
+  - 细化路径解析边界（§14）：5 种支持格式 + 3 种不支持格式 + 符号链接处理
+  - 编写错误处理策略（§15）：8 种文件操作错误 + 3 种数据库错误 + 3 条恢复原则
+  - 补充 UI 交互规范（§16）：状态流转图 + 加载态 + 空态 + 操作反馈表
+- Files modified:
+  - `doc/PRD.md` (+§13 验收用例, §14 路径边界, §15 错误处理, §16 UI 交互)
+  - `plan/task_plan.md` (Phase 2 → complete)
+  - `plan/progress.md` (updated)
 
 ### Phase 3: 技术方案评审
 - **Status:** pending
