@@ -33,6 +33,18 @@
 
 ## Research Findings
 
+### Phase 1 差距分析结果
+
+交叉验证 map.md（6 项约束 + 7 项决策）vs PRD，发现 5 个差距并全部修复：
+
+1. **§5.7 项目级继承描述**：原 PRD 提到"继承全局远程仓库配置"，但 MVP 不含远端拉取。修正为：MVP 阶段项目与全局的关联仅体现在工具路径继承上。
+2. **§5.5 SSOT 目录结构**：原描述含混（remote/ 和 local/ 混用）。修正为：MVP 阶段所有 Skill 统一存入 `local/`，`remote/` 预留。
+3. **§5.5 缺失机制**：`local.md` 创建时机、Symlink fallback 日志、临时目录命名规范均未说明。补充完整。
+4. **§7 触发机制遗漏**：map.md 提到的"检查更新"按钮未列入同步触发入口。补充。
+5. **§5.3 边界情况**：隐藏目录跳过、front matter 缺少 name 的 fallback 均未说明。补充。
+
+**覆盖验证：** map.md 第三节 8 项 MVP 需求、第一节 6 项约束条件、DDL 5 张表定义均已在 PRD 中完整覆盖，无遗漏。
+
 ### 设计讨论已解决的关键决策
 
 - **公开市场 vs 裸仓库**：MVP 不区分，预留 `source_type: SkillSource` 字段，只留 `Unknown` variant

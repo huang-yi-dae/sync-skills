@@ -6,16 +6,16 @@
 
 ## Current Phase
 
-Phase 1
+Phase 2
 
 ## Phases
 
 ### Phase 1: 需求验证与差距分析
-- [ ] 逐条对照 map.md 和 DDL，确认 PRD.md 覆盖所有已确定的约束和决策
-- [ ] 识别 map.md 中标记"已讨论但后置"的功能，确认 PRD 边界清晰
-- [ ] 检查 DDL 与 PRD 数据模型描述的一致性
-- [ ] 列出所有需要进一步澄清的问题
-- **Status:** in_progress
+- [x] 逐条对照 map.md 和 DDL，确认 PRD.md 覆盖所有已确定的约束和决策
+- [x] 识别 map.md 中标记"已讨论但后置"的功能，确认 PRD 边界清晰
+- [x] 检查 DDL 与 PRD 数据模型描述的一致性
+- [x] 列出所有需要进一步澄清的问题（5 个 gap 已全部修复）
+- **Status:** complete
 
 ### Phase 2: 功能细化与验收标准补全
 - [ ] 为每个功能需求补充具体的验收用例（输入→预期输出）

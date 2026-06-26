@@ -69,7 +69,9 @@ function scan(dir):
 
 **验收标准：**
 - 能正确发现嵌套目录中的 SKILL.md
-- 解析 front matter 失败的目录跳过并记日志
+- 隐藏目录（以 `.` 开头）跳过不扫描
+- 解析 front matter 失败的目录跳过并记日志（不崩溃）
+- SKILL.md 存在但 front matter 缺少 `name` 字段 → 以目录名作为 fallback name
 - 重复扫描不产生重复记录
 - content_hash 能检测到文件内容的变化
 
@@ -103,9 +105,10 @@ function scan(dir):
 **SSOT 存储结构：**
 ```
 ~/.agents/skills/
-  ├── remote/<skill-name>/    ← 远端拉来的（MVP 暂不实现远端拉取，但预留目录结构）
-  └── local/<skill-name>/     ← 本地自写的
+  ├── remote/                   ← 预留目录，MVP 不使用（远端拉取为 post-MVP 功能）
+  └── local/<skill-name>/       ← 本地自写 Skill 的 SSOT 存储位置
 ```
+MVP 阶段所有 Skill 统一存入 `local/` 目录。`remote/` 目录结构预留给 post-MVP 远端拉取功能。
 
 **默认半自动模式：** 扫描发现哈希变化 → UI 标记"有更新" → 用户点击"同步"按钮 → 从改动目录复制到 SSOT（`local/<skill-name>/`） → 从 SSOT 复制到其他所有启用该 Skill 的工具目录。
 
@@ -113,8 +116,14 @@ function scan(dir):
 
 **文件操作规范：**
 - 复制用标准库 API，不用 shell 命令
-- 替换用临时目录 + rename 原子操作
+- 替换用临时目录（`.tmp-{进程ID}-{纳秒时间戳}`）+ rename 原子操作
 - 同名冲突加 `-local` 后缀
+- Symlink 失败时回退到 Copy 并记录日志
+
+**`local.md` 标记机制：**
+- 用户通过 UI 手动创建本地 Skill 时 → 工具自动在 Skill 目录下生成 `local.md`
+- 从非远端目录导入 Skill 时 → 工具自动补 `local.md`
+- 扫描时：有 `local.md` → 走双向同步逻辑；没有 → 走单向逻辑（MVP 阶段无远端 Skill，所有无 `local.md` 的 Skill 视为只读展示）
 
 **验收标准：**
 - 半自动模式下扫描到变化后 UI 正确标记
@@ -135,7 +144,7 @@ function scan(dir):
 
 界面顶部有"全局"和"项目"两个一级 Tab。全局 Tab 管理所有工具的全局 Skill。项目 Tab 左侧显示项目列表（用户手动添加），右侧与全局界面同构。
 
-项目级 Skill 可继承全局的远程仓库来源配置（MVP 阶段此继承暂无实际效果，因为远端拉取不在 MVP 范围），但项目级安装的 Skill 不反向共享到全局或其他项目。
+项目级安装的 Skill 不反向共享到全局或其他项目。MVP 阶段项目级与全局的关联仅体现在工具路径的继承上（§5.1），远端仓库来源的继承在 post-MVP 实现远端拉取后生效。
 
 **验收标准：**
 - 全局和项目 Tab 切换正常
@@ -174,6 +183,7 @@ Tauri v2 打包，目标体积 ~5MB，无需额外运行时依赖。
 MVP 不含后台进程、文件系统监听或定时任务。同步仅在以下时机触发：
 
 - **打开主界面**：全量扫描（全局 + 所有项目 + 所有工具路径）
+- **"检查更新"按钮**：重新扫描所有已配置路径，对比 content_hash 检测变化
 - **全局 Tab 手动刷新**：仅扫描全局范围
 - **项目 Tab 手动刷新**：仅扫描当前项目
 - **安装/卸载/更新操作**：立即同步对应 Skill

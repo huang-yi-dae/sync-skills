@@ -8,23 +8,27 @@
 - Actions taken:
   - 阅读并分析 `doc/map.md`（设计讨论文档，358 行）
   - 阅读并分析 `doc/skill-manager-ddl.sql`（数据库 DDL，119 行）
-  - 创建 `doc/PRD.md`（MVP PRD 初稿）
+  - 创建 `doc/PRD.md`（MVP PRD 初稿，250 行）
   - 提取 8 项 MVP 功能需求、5 项约束条件、6 项后置功能
-  - 确认 DDL 与 PRD 数据模型描述一致（5 张表、ID 哈希方案、预设数据）
-  - 识别 map.md 中所有已讨论决策并归档到 findings.md
+  - 确认 DDL 与 PRD 数据模型一致（5 张表、ID 哈希方案、预设数据）
+  - 逐条交叉验证 map.md 6 项约束 + 7 项决策 vs PRD 覆盖情况
+  - 发现并修复 5 个差距：
+    1. §5.7 移除误导性远程仓库继承描述，改为明确 MVP 仅路径继承
+    2. §5.5 SSOT 结构明确 MVP 只用 local/ 目录，remote/ 预留
+    3. §5.5 补充 local.md 创建机制 + symlink fallback 日志 + 临时目录命名规范
+    4. §7 补充"检查更新"按钮作为同步触发入口
+    5. §5.3 补充边界情况（隐藏目录跳过、front matter 缺 name 用目录名 fallback）
 - Files created/modified:
-  - `doc/PRD.md` (created)
+  - `doc/PRD.md` (created → updated with 5 fixes)
   - `plan/task_plan.md` (created)
-  - `plan/findings.md` (created)
-  - `plan/progress.md` (created)
-- Gap analysis:
-  - PRD 已覆盖 map.md 第三节全部 8 项 MVP 需求
-  - PRD 已覆盖 map.md 第一节全部 6 项约束条件
-  - PRD 已明确列出后置功能清单（6 项）
-  - PRD 与 DDL 数据模型一致（表名、字段、约束、索引）
-  - 待补充：具体验收用例（输入→预期输出）
-  - 待补充：UI 交互细节（状态流转、加载态、空态）
-  - 待补充：技术实现细节（Tauri IPC 接口清单）
+  - `plan/findings.md` (created → updated with gap analysis)
+  - `plan/progress.md` (created → updated)
+- Gap analysis summary:
+  - PRD 覆盖 map.md 第三节全部 8 项 MVP 需求 ✅
+  - PRD 覆盖 map.md 第一节全部 6 项约束条件 ✅
+  - PRD 与 DDL 数据模型一致 ✅
+  - 后置功能边界清晰 ✅
+  - 5 个差距已修复并合入 PRD ✅
 
 ### Phase 2: 功能细化与验收标准补全
 - **Status:** pending
