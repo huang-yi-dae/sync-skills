@@ -43,11 +43,18 @@
   - `plan/progress.md` (updated)
 
 ### Phase 3: 技术方案评审
-- **Status:** pending
+- **Status:** complete
 - Actions taken:
-  - （尚未开始）
-- Files created/modified:
-  - （无）
+  - 评估 Tauri v2 + React + SQLite 技术栈可行性（结论：成熟可用）
+  - 对比 tauri-plugin-sql vs rusqlite（决策：rusqlite，理由见 §17.2）
+  - 定义 17 个 Tauri IPC Command（§17.3，5 大分组）
+  - 编写跨平台文件操作策略（§17.4，6 项操作方案）
+  - 列出关键 Rust 依赖清单（§17.5，8 个 crate）
+  - 识别风险点：tokio 异步运行时与 rusqlite 同步 API 需用 spawn_blocking 适配
+- Files modified:
+  - `doc/PRD.md` (+§17 技术方案评审)
+  - `plan/task_plan.md` (Phase 3 → complete)
+  - `plan/progress.md` (updated)
 
 ### Phase 4: 优先级排序与里程碑划分
 - **Status:** pending

@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 3
+Phase 4
 
 ## Phases
 
@@ -25,11 +25,11 @@ Phase 3
 - **Status:** complete
 
 ### Phase 3: 技术方案评审
-- [ ] 评审 Tauri v2 + React + SQLite 技术栈的可行性
-- [ ] 确定 Rust 后端需要暴露的 IPC 接口清单
-- [ ] 评估 SQLite 在 Tauri 中的集成方式（tauri-plugin-sql vs rusqlite）
-- [ ] 确认文件操作的跨平台实现策略
-- **Status:** pending
+- [x] 评审 Tauri v2 + React + SQLite 技术栈的可行性
+- [x] 确定 Rust 后端需要暴露的 IPC 接口清单（17 个 Command）
+- [x] 评估 SQLite 在 Tauri 中的集成方式（决策：rusqlite）
+- [x] 确认文件操作的跨平台实现策略（6 项操作方案）
+- **Status:** complete
 
 ### Phase 4: 优先级排序与里程碑划分
 - [ ] 将 MVP 功能按依赖关系排序
