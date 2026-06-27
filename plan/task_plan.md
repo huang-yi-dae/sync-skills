@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 5
+Implementation complete (M1 + M2 + M3 delivered)
 
 ## Phases
 
@@ -44,6 +44,57 @@ Phase 5
 - [x] 创建 PRD 变更日志（附录 C）
 - [x] 交付 PRD.md + task_plan.md + findings.md + progress.md
 - **Status:** complete
+
+---
+
+## Implementation Phase
+
+### M1: 基础能力 ✅
+- [x] Tauri v2 项目脚手架（create-tauri-app + TypeScript）
+- [x] Rust 后端模块：models.rs, hash.rs, db.rs, scanner.rs, lib.rs
+- [x] SQLite schema 初始化（5 张表 + 种子数据）
+- [x] 7 个 IPC 命令：list_tools, add_tool, update_tool_path, delete_tool, list_skills, full_scan, scan_scope
+- [x] React 前端：工具列表编辑、扫描按钮、Skill 卡片网格、Toast 通知
+- [x] 暗色主题 CSS
+- **Commits:** b055e85
+
+### M2: 核心同步 ✅
+- [x] sync.rs 文件操作引擎：copy_directory, atomic_replace, symlink_or_copy
+- [x] settings.rs JSON 持久化设置（semi-auto/full-auto 模式）
+- [x] DB 扩展：toggle_installation, get_active_installations, insert_sync_log, get_sync_logs, list_skills_with_status
+- [x] 9 个新 IPC 命令：toggle_skill, sync_skill, sync_all_pending, check_updates, get/update_settings, list/add/delete_projects, get_sync_logs
+- [x] SSOT 路径管理（~/.agents/skills/local/）
+- [x] local.md 标记机制
+- **Commits:** b94d01f
+
+### M2+M3: 前端完整实现 ✅
+- [x] TypeScript 类型扩展：SkillView, SyncResult, SkillUpdate, SyncLog, Settings, Project
+- [x] Skill 卡片：工具 toggle 开关、同步按钮、安装计数、更新指示器
+- [x] Check Updates 按钮 + 哈希比较
+- [x] Settings 面板（同步模式、symlink 偏好）
+- [x] Global/Projects 双标签导航
+- [x] 项目 CRUD（添加/删除项目 + 模态对话框）
+- [x] 同步日志查看器（表格 + 方向/状态徽章）
+- [x] Skill 搜索过滤
+- [x] 工具完整 CRUD（添加/删除/编辑路径 + 路径校验）
+- [x] Toast 三级通知、骨架加载态、空状态
+- **Commits:** 1bb79d2
+
+### Bug 修复 ✅
+- [x] 项目级扫描使用 project_path + project_rel_path（不再复用全局路径）
+- [x] Projects tab 移除 Global 按钮
+- [x] Tool 添加/编辑路径校验（绝对路径、UNC、拒绝相对路径）
+- [x] Tool 删除后 UI 正确刷新（Promise.all + 清除编辑状态）
+- **Commits:** 8549439
+
+### UI 重设计 ✅
+- [x] frontend-design skill 指导的完整 UI 重设计
+- [x] JetBrains Mono + DM Sans 字体组合
+- [x] 琥珀色主调 + 青色辅助色配色方案
+- [x] 微噪点纹理、玻璃态 Toast、骨架屏动效、卡片悬浮升起
+- [x] 模态框动画、自定义滚动条、焦点发光
+- [x] 应用品牌标识（⬡ Skill Manager）
+- **Commits:** dc67404
 
 ## Key Questions
 

@@ -83,28 +83,107 @@
   - `plan/task_plan.md` (Phase 5 → complete, all questions resolved)
   - `plan/progress.md` (final update)
 
+## Session: 2026-06-27 (Implementation)
+
+### M1: 基础能力搭建 (commit b055e85)
+- **Status:** complete
+- Actions taken:
+  - `cargo create-tauri-app` 初始化 Tauri v2 + React + TypeScript 项目
+  - 实现 Rust 后端模块结构：`db.rs`, `scanner.rs`, `models.rs`, `lib.rs`
+  - 创建 SQLite 数据库层（5 张表：tools, skills, skill_installations, projects, sync_logs）
+  - 实现 SHA-256 哈希 ID 生成（前 8 字节 little-endian i64）
+  - 实现 skill 目录扫描器（递归扫描 + front matter 解析 + content hash）
+  - 实现 4 个基础 IPC Command：`list_tools`, `list_skills`, `scan_scope`, `full_scan`
+  - 搭建 React 前端骨架（工具列表 + skill 列表 + 扫描按钮）
+- Files created:
+  - `src-tauri/src/db.rs`, `scanner.rs`, `models.rs`, `lib.rs`
+  - `src/App.tsx`, `src/App.css`, `src/types.ts`
+  - `src-tauri/Cargo.toml` (rusqlite, serde, sha2, tokio, walkdir, serde_yaml)
+
+### M2: 核心同步引擎 (commit b94d01f)
+- **Status:** complete
+- Actions taken:
+  - 创建 `sync.rs` 模块：`copy_directory`, `atomic_replace`, `symlink_or_copy`, `create_local_marker`
+  - 实现 SSOT 路径管理（`~/.agents/skills/local/<name>/`）
+  - 创建 `settings.rs` 模块：JSON 配置持久化（sync_mode, prefer_symlink）
+  - 扩展 `db.rs`：`toggle_installation` (UPSERT), `get_active_installations`, `update_synced_at`, `insert_sync_log`, `get_sync_logs`, `get_all_skills_for_update_check`
+  - 扩展 `db.rs` M3 方法：`list_projects`, `add_project`, `delete_project`, `get_project_path`, `get_project_tool_paths`
+  - 新增 IPC Command：`toggle_skill`, `sync_skill`, `sync_all_pending`, `check_updates`, `get_settings`, `update_settings`, `list_projects`, `add_project`, `delete_project`, `get_sync_logs`
+  - 提取 `scan_tool_paths()` 和 `do_sync_skill()` 共享函数消除重复
+- Files created/modified:
+  - `src-tauri/src/sync.rs` (created, ~200 lines)
+  - `src-tauri/src/settings.rs` (created, ~63 lines)
+  - `src-tauri/src/db.rs` (+334 lines)
+  - `src-tauri/src/lib.rs` (rewritten, ~350 lines)
+  - `src-tauri/src/models.rs` (updated with new types)
+
+### M2+M3: 完整前端 (commit 1bb79d2)
+- **Status:** complete
+- Actions taken:
+  - 重写 `types.ts`：添加 Project, InstallationInfo, SkillView, SyncResult, SkillUpdate, SyncLog, Settings 接口
+  - 重写 `App.tsx`（~780 行）：完整 M2+M3 前端功能
+    - Tool CRUD（路径验证：绝对路径 / ~/ / 盘符 / UNC）
+    - Skill toggle per tool + sync 按钮
+    - Check Updates（hash 对比）
+    - Settings panel（sync_mode, prefer_symlink）
+    - Global/Projects 双 Tab 导航
+    - Project CRUD + modal 对话框
+    - Sync log viewer
+    - Search/filter
+  - 重写 `App.css`（~650 行）：初始 UI 样式
+- Files modified:
+  - `src/types.ts`, `src/App.tsx`, `src/App.css`
+
+### Bug Fixes (commit 8549439)
+- **Status:** complete
+- 修复 5 个用户反馈问题：
+  1. **项目级扫描复用全局路径** → `scan_scope` 增加 `project_id` 参数，`db.rs` 新增 `get_project_tool_paths()` 构造项目级路径
+  2. **Projects tab 显示 Global** → 从项目导航中移除 Global 按钮
+  3. **Tool 添加无路径验证** → 添加绝对路径校验（`/`, `~/`, 盘符, `\\`）
+  4. **Tool 删除后 UI 未刷新** → 添加 `editingTool` 状态清理 + `Promise.all([loadTools(), loadSkills()])`
+  5. **UI 太丑** → 触发 UI 重设计（下一节）
+
+### UI 重设计 (commit dc67404)
+- **Status:** complete
+- Actions taken:
+  - 使用 frontend-design skill 指导完整 UI 重设计
+  - 设计系统：JetBrains Mono + DM Sans 字体，amber accent (#e8a045)，深色主题 (#08080c)
+  - 重写 `App.css`：CSS 变量、noise texture overlay、glass-morphism toasts、skeleton shimmer、modal 动画、自定义滚动条
+  - 更新 `index.html`：Google Fonts preconnect + 防白闪背景色
+  - 更新 `tauri.conf.json`：productName 和 window title 改为 "Skill Manager"
+- Files modified:
+  - `src/App.css` (rewritten, ~650 lines)
+  - `index.html` (+fonts, +background style, title change)
+  - `src-tauri/tauri.conf.json` (productName, title)
+
 ## Test Results
 
-（PRD 阶段暂无测试结果，实现阶段补充）
+（实现阶段编译验证通过，功能测试待补充）
 
 | Test | Input | Expected | Actual | Status |
 |------|-------|----------|--------|--------|
+| cargo build | `cargo build` | 编译成功 | ✅ 通过 | pass |
+| npm run build | `npm run build` | 前端构建成功 | ✅ 通过 | pass |
+| tauri dev | `cargo tauri dev` | 应用启动 | ✅ 通过 | pass |
 
 ## Error Log
 
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
-| （暂无） | - | - | - |
+| 2026-06-27 | Port 1420 already in use (strictPort) | 多次 | `powershell.exe Stop-Process -Id <pid> -Force` |
+| 2026-06-27 | `scanner` module not found in db.rs | 1 | 添加 `use crate::scanner;` |
+| 2026-06-27 | sync_logs FK violation (tool_id=0) | 1 | 移除 to_ssot 日志，仅记录 from_ssot 操作 |
+| 2026-06-27 | 项目级扫描复用全局路径 | 1 | scan_scope 增加 project_id + get_project_tool_paths() |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | All 5 phases complete. PRD v1.0 delivered. |
-| Where am I going? | Ready for implementation. Start with M1 (基础能力). |
-| What's the goal? | ~~将 map.md 和 DDL 转化为完整可执行的 MVP PRD~~ ✅ Done |
-| What have I learned? | See findings.md (gap analysis, tech decisions, risk assessment) |
-| What have I done? | See above (5 phases, 6 commits, PRD 18 sections + 3 appendices) |
+| Where am I? | M1-M3 全部完成。14 commits, 应用可运行。 |
+| Where am I going? | MVP 功能完整。可考虑：远端 GitHub 拉取、自动后台监控、symlink 优化。 |
+| What's the goal? | ~~MVP 全部功能实现~~ ✅ Done |
+| What have I learned? | sync_logs FK 约束（tool_id=0 不可用）、Tauri strictPort 端口管理、rusqlite + spawn_blocking 模式 |
+| What have I done? | 14 commits: PRD 5 phases + M1 scaffold + M2 backend + M2+M3 frontend + 5 bug fixes + UI redesign |
 
 ---
 
