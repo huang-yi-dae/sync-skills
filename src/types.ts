@@ -1,4 +1,5 @@
-// TypeScript types matching Rust models
+// Copyright (c) 2026 Skill Manager Contributors
+// SPDX-License-Identifier: MIT
 
 export interface Tool {
   id: number;
@@ -9,7 +10,21 @@ export interface Tool {
   updated_at: string;
 }
 
-export interface Skill {
+export interface Project {
+  id: number;
+  name: string;
+  path: string;
+  created_at: string;
+}
+
+export interface InstallationInfo {
+  tool_id: number;
+  tool_name: string;
+  status: string;
+  synced_at: string | null;
+}
+
+export interface SkillView {
   id: number;
   name: string;
   description: string | null;
@@ -17,6 +32,9 @@ export interface Skill {
   content_hash: string;
   created_at: string;
   updated_at: string;
+  installed_tools: InstallationInfo[];
+  install_count: number;
+  has_update: boolean;
 }
 
 export interface ScanResult {
@@ -26,8 +44,41 @@ export interface ScanResult {
   errors: string[];
 }
 
+export interface SyncResult {
+  skill_id: number;
+  skill_name: string;
+  synced_to: number;
+  errors: string[];
+}
+
+export interface SkillUpdate {
+  skill_id: number;
+  skill_name: string;
+  source_path: string;
+  old_hash: string;
+  new_hash: string;
+}
+
+export interface SyncLog {
+  id: number;
+  skill_id: number;
+  skill_name: string | null;
+  tool_id: number;
+  tool_name: string | null;
+  project_id: number;
+  direction: string;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface Settings {
+  sync_mode: string;
+  prefer_symlink: boolean;
+}
+
 export interface Toast {
-  type: "success" | "error";
+  type: "success" | "error" | "info";
   message: string;
   id: number;
 }
