@@ -504,6 +504,14 @@ function App() {
     <main className="container">
       <ToastContainer toasts={toasts} />
 
+      {/* App header */}
+      <header className="app-header">
+        <div className="brand">
+          <span className="brand-icon">⬡</span>
+          <span className="brand-name">Skill Manager</span>
+        </div>
+      </header>
+
       {/* Top navigation */}
       <nav className="top-nav">
         <div className="tabs">
