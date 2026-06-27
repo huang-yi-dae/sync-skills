@@ -40,8 +40,52 @@ pub struct Skill {
 pub struct SkillView {
     #[serde(flatten)]
     pub skill: Skill,
-    pub installed_tools: Vec<String>,
+    pub installed_tools: Vec<InstallationInfo>,
     pub install_count: usize,
+    pub has_update: bool,
+}
+
+/// Installation info for a single tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallationInfo {
+    pub tool_id: i64,
+    pub tool_name: String,
+    pub status: String,
+    pub synced_at: Option<String>,
+}
+
+/// Result of a sync operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncResult {
+    pub skill_id: i64,
+    pub skill_name: String,
+    pub synced_to: usize,
+    pub errors: Vec<String>,
+}
+
+/// Update info for a skill (used by check_updates)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillUpdate {
+    pub skill_id: i64,
+    pub skill_name: String,
+    pub source_path: String,
+    pub old_hash: String,
+    pub new_hash: String,
+}
+
+/// A sync log entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncLog {
+    pub id: i64,
+    pub skill_id: i64,
+    pub skill_name: Option<String>,
+    pub tool_id: i64,
+    pub tool_name: Option<String>,
+    pub project_id: i64,
+    pub direction: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub created_at: String,
 }
 
 /// Result of a scan operation

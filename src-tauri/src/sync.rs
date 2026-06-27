@@ -1,0 +1,216 @@
+// Copyright (c) 2026 Skill Manager Contributors
+// SPDX-License-Identifier: MIT
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+/// Recursively copy all files from `src` directory to `dst` directory.
+/// Creates `dst` if it doesn't exist. Overwrites existing files.
+pub fn copy_directory(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() {
+        return Err(format!("Source directory does not exist: {:?}", src));
+    }
+    if !src.is_dir() {
+        return Err(format!("Source is not a directory: {:?}", src));
+    }
+
+    fs::create_dir_all(dst).map_err(|e| format!("Failed to create target directory: {}", e))?;
+
+    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read source directory: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let entry_path = entry.path();
+
+        // Skip hidden files
+        if is_hidden(&entry_path) {
+            continue;
+        }
+
+        let dest_path = dst.join(entry.file_name());
+
+        if entry_path.is_dir() {
+            copy_directory(&entry_path, &dest_path)?;
+        } else {
+            fs::copy(&entry_path, &dest_path).map_err(|e| {
+                format!(
+                    "Failed to copy {:?} to {:?}: {}",
+                    entry_path, dest_path, e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Atomically replace the `dst` directory with contents from `src`.
+/// Strategy: copy src to a temp directory next to dst, then rename.
+/// On rename failure (cross-volume), falls back to delete+copy.
+pub fn atomic_replace(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() || !src.is_dir() {
+        return Err(format!("Invalid source directory: {:?}", src));
+    }
+
+    let parent = dst.parent().ok_or("Target has no parent directory")?;
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+
+    // Create temp directory next to target
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_name = format!(".tmp-{}-{}", std::process::id(), timestamp);
+    let temp_dir = parent.join(&temp_name);
+
+    // Copy src to temp
+    copy_directory(src, &temp_dir)?;
+
+    // If dst exists, try rename (atomic on same volume)
+    if dst.exists() {
+        match fs::rename(dst, &temp_dir.join(".old")) {
+            Ok(()) => {
+                // Rename temp to dst
+                if let Err(e) = fs::rename(&temp_dir, dst) {
+                    // Rollback: rename .old back
+                    let _ = fs::rename(&temp_dir.join(".old"), dst);
+                    let _ = fs::remove_dir_all(&temp_dir);
+                    return Err(format!("Atomic rename failed: {}", e));
+                }
+                // Clean up old
+                let _ = fs::remove_dir_all(&temp_dir.join(".old"));
+            }
+            Err(_) => {
+                // Rename failed (possibly cross-volume), fallback to delete+copy
+                let _ = fs::remove_dir_all(&temp_dir);
+                let _ = fs::remove_dir_all(dst);
+                copy_directory(src, dst)?;
+            }
+        }
+    } else {
+        // dst doesn't exist, just rename temp to dst
+        fs::rename(&temp_dir, dst)
+            .map_err(|e| {
+                let _ = fs::remove_dir_all(&temp_dir);
+                format!("Failed to rename temp to target: {}", e)
+            })?;
+    }
+
+    Ok(())
+}
+
+/// Try to create a symlink from `link_path` pointing to `target`.
+/// On failure (e.g., Windows without developer mode), falls back to copy.
+pub fn symlink_or_copy(target: &Path, link_path: &Path) -> Result<String, String> {
+    if !target.exists() {
+        return Err(format!("Symlink target does not exist: {:?}", target));
+    }
+
+    // Remove existing link_path if it exists
+    if link_path.exists() {
+        if link_path.is_dir() {
+            fs::remove_dir_all(link_path)
+                .map_err(|e| format!("Failed to remove existing directory: {}", e))?;
+        } else {
+            fs::remove_file(link_path)
+                .map_err(|e| format!("Failed to remove existing file: {}", e))?;
+        }
+    }
+
+    // Ensure parent directory exists
+    if let Some(parent) = link_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+
+    // Try symlink
+    #[cfg(target_os = "windows")]
+    let symlink_result = if target.is_dir() {
+        std::os::windows::fs::symlink_dir(target, link_path)
+    } else {
+        std::os::windows::fs::symlink_file(target, link_path)
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let symlink_result = std::os::unix::fs::symlink(target, link_path);
+
+    match symlink_result {
+        Ok(()) => Ok("symlink".to_string()),
+        Err(_) => {
+            // Symlink failed, fallback to copy
+            if target.is_dir() {
+                copy_directory(target, link_path)?;
+            } else {
+                fs::copy(target, link_path)
+                    .map_err(|e| format!("Fallback copy failed: {}", e))?;
+            }
+            Ok("copy".to_string())
+        }
+    }
+}
+
+/// Create the `local.md` marker file in a skill directory.
+pub fn create_local_marker(dir: &Path) -> Result<(), String> {
+    let marker = dir.join("local.md");
+    if !marker.exists() {
+        fs::write(
+            &marker,
+            "# Local Skill\n\nThis skill is managed by Skill Manager.\n",
+        )
+        .map_err(|e| format!("Failed to create local.md marker: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Check if a skill directory has the `local.md` marker (bidirectional sync).
+pub fn is_local_skill(dir: &Path) -> bool {
+    dir.join("local.md").exists()
+}
+
+/// Get the SSOT path for a skill by name.
+/// Returns `~/.agents/skills/local/<skill-name>/`
+pub fn ssot_path(skill_name: &str) -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    Ok(home.join(".agents").join("skills").join("local").join(skill_name))
+}
+
+/// Ensure the SSOT base directory exists.
+pub fn ensure_ssot_dir() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let ssot_base = home.join(".agents").join("skills").join("local");
+    fs::create_dir_all(&ssot_base)
+        .map_err(|e| format!("Failed to create SSOT directory: {}", e))?;
+    Ok(ssot_base)
+}
+
+/// Resolve a name conflict: if a skill with the same name exists at the target,
+/// append `-local` suffix.
+pub fn resolve_conflict(target_parent: &Path, skill_name: &str) -> PathBuf {
+    let target = target_parent.join(skill_name);
+    if target.exists() {
+        // Check if it's a different skill (not the same source)
+        target_parent.join(format!("{}-local", skill_name))
+    } else {
+        target
+    }
+}
+
+/// Check if a path is hidden
+fn is_hidden(path: &Path) -> bool {
+    if let Some(name) = path.file_name() {
+        if name.to_string_lossy().starts_with('.') {
+            return true;
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if let Ok(metadata) = path.metadata() {
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            return metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0;
+        }
+    }
+
+    false
+}

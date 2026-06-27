@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::hash::compute_id_hash;
-use crate::models::{Skill, Tool};
+use crate::models::{InstallationInfo, Project, Skill, SkillView, SyncLog, Tool};
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -334,5 +334,337 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(format!("Query error: {}", e)),
         }
+    }
+
+    // ==================== M2: Sync & Installation ====================
+
+    /// Get a single skill by ID
+    pub fn get_skill_by_id(&self, skill_id: i64) -> Result<Skill, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.query_row(
+            "SELECT id, name, description, source_path, content_hash, created_at, updated_at FROM skills WHERE id = ?1",
+            params![skill_id],
+            |row| {
+                Ok(Skill {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    source_path: row.get(3)?,
+                    content_hash: row.get(4)?,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            },
+        )
+        .map_err(|e| format!("Failed to get skill: {}", e))
+    }
+
+    /// List skills with installation status (SkillView)
+    pub fn list_skills_with_status(&self, _project_id: i64) -> Result<Vec<SkillView>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        // Get all skills
+        let mut skill_stmt = conn
+            .prepare("SELECT id, name, description, source_path, content_hash, created_at, updated_at FROM skills ORDER BY name")
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let skills: Vec<Skill> = skill_stmt
+            .query_map([], |row| {
+                Ok(Skill {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    source_path: row.get(3)?,
+                    content_hash: row.get(4)?,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // For each skill, get installation info
+        let mut views = Vec::new();
+        for skill in skills {
+            let mut inst_stmt = conn
+                .prepare(
+                    "SELECT si.tool_id, t.name, si.status, si.synced_at
+                     FROM skill_installations si
+                     JOIN tools t ON t.id = si.tool_id
+                     WHERE si.skill_id = ?1 AND si.project_id = 0",
+                )
+                .map_err(|e| format!("Prepare error: {}", e))?;
+
+            let installations: Vec<InstallationInfo> = inst_stmt
+                .query_map(params![skill.id], |row| {
+                    Ok(InstallationInfo {
+                        tool_id: row.get(0)?,
+                        tool_name: row.get(1)?,
+                        status: row.get(2)?,
+                        synced_at: row.get(3)?,
+                    })
+                })
+                .map_err(|e| format!("Query error: {}", e))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            let install_count = installations.len();
+
+            // Check if skill has an update (content_hash differs from any active installation's synced hash)
+            let has_update = false; // Will be set by check_updates logic
+
+            views.push(SkillView {
+                skill,
+                installed_tools: installations,
+                install_count,
+                has_update,
+            });
+        }
+
+        Ok(views)
+    }
+
+    /// Toggle skill installation status (enable/disable)
+    pub fn toggle_installation(
+        &self,
+        skill_id: i64,
+        tool_id: i64,
+        project_id: i64,
+        active: bool,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let status = if active { "active" } else { "disabled" };
+
+        conn.execute(
+            "INSERT INTO skill_installations (skill_id, tool_id, project_id, status)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(skill_id, tool_id, project_id) DO UPDATE SET
+                status = ?4,
+                updated_at = datetime('now')",
+            params![skill_id, tool_id, project_id, status],
+        )
+        .map_err(|e| format!("Failed to toggle installation: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Get all active installations for a skill (for sync targeting)
+    pub fn get_active_installations(&self, skill_id: i64, project_id: i64) -> Result<Vec<(i64, String)>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT si.tool_id, t.global_path
+                 FROM skill_installations si
+                 JOIN tools t ON t.id = si.tool_id
+                 WHERE si.skill_id = ?1 AND si.project_id = ?2 AND si.status = 'active'",
+            )
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let results = stmt
+            .query_map(params![skill_id, project_id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Update synced_at timestamp for an installation
+    pub fn update_synced_at(&self, skill_id: i64, tool_id: i64, project_id: i64) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.execute(
+            "UPDATE skill_installations SET synced_at = datetime('now'), updated_at = datetime('now')
+             WHERE skill_id = ?1 AND tool_id = ?2 AND project_id = ?3",
+            params![skill_id, tool_id, project_id],
+        )
+        .map_err(|e| format!("Failed to update synced_at: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Insert a sync log entry
+    pub fn insert_sync_log(
+        &self,
+        skill_id: i64,
+        tool_id: i64,
+        project_id: i64,
+        direction: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.execute(
+            "INSERT INTO sync_logs (skill_id, tool_id, project_id, direction, status, error_message)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![skill_id, tool_id, project_id, direction, status, error_message],
+        )
+        .map_err(|e| format!("Failed to insert sync log: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Query sync logs with optional filters
+    pub fn get_sync_logs(&self, skill_id: Option<i64>, limit: Option<i64>) -> Result<Vec<SyncLog>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let limit = limit.unwrap_or(100);
+
+        let query = match skill_id {
+            Some(sid) => format!(
+                "SELECT sl.id, sl.skill_id, s.name, sl.tool_id, t.name, sl.project_id,
+                        sl.direction, sl.status, sl.error_message, sl.created_at
+                 FROM sync_logs sl
+                 LEFT JOIN skills s ON s.id = sl.skill_id
+                 LEFT JOIN tools t ON t.id = sl.tool_id
+                 WHERE sl.skill_id = {}
+                 ORDER BY sl.created_at DESC LIMIT {}",
+                sid, limit
+            ),
+            None => format!(
+                "SELECT sl.id, sl.skill_id, s.name, sl.tool_id, t.name, sl.project_id,
+                        sl.direction, sl.status, sl.error_message, sl.created_at
+                 FROM sync_logs sl
+                 LEFT JOIN skills s ON s.id = sl.skill_id
+                 LEFT JOIN tools t ON t.id = sl.tool_id
+                 ORDER BY sl.created_at DESC LIMIT {}",
+                limit
+            ),
+        };
+
+        let mut stmt = conn
+            .prepare(&query)
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let logs = stmt
+            .query_map([], |row| {
+                Ok(SyncLog {
+                    id: row.get(0)?,
+                    skill_id: row.get(1)?,
+                    skill_name: row.get(2)?,
+                    tool_id: row.get(3)?,
+                    tool_name: row.get(4)?,
+                    project_id: row.get(5)?,
+                    direction: row.get(6)?,
+                    status: row.get(7)?,
+                    error_message: row.get(8)?,
+                    created_at: row.get(9)?,
+                })
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(logs)
+    }
+
+    /// Check for skill updates by comparing DB hashes with current file hashes
+    pub fn get_all_skills_for_update_check(&self) -> Result<Vec<(i64, String, String, String)>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, name, source_path, content_hash FROM skills")
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let skills = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(skills)
+    }
+
+    // ==================== M3: Project Management ====================
+
+    /// List all projects
+    pub fn list_projects(&self) -> Result<Vec<Project>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, name, path, created_at FROM projects ORDER BY id")
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let projects = stmt
+            .query_map([], |row| {
+                Ok(Project {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(projects)
+    }
+
+    /// Add a new project
+    pub fn add_project(&self, name: &str, path: &str) -> Result<Project, String> {
+        let id = compute_id_hash(path);
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        // Check if path already exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM projects WHERE path = ?1",
+                params![path],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if exists {
+            return Err("Project with this path already exists".to_string());
+        }
+
+        conn.execute(
+            "INSERT INTO projects (id, name, path) VALUES (?1, ?2, ?3)",
+            params![id, name, path],
+        )
+        .map_err(|e| format!("Failed to add project: {}", e))?;
+
+        // Fetch the inserted row
+        conn.query_row(
+            "SELECT id, name, path, created_at FROM projects WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(Project {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            },
+        )
+        .map_err(|e| format!("Failed to fetch inserted project: {}", e))
+    }
+
+    /// Delete a project (cascades to installations and sync_logs)
+    pub fn delete_project(&self, project_id: i64) -> Result<(), String> {
+        if project_id == 0 {
+            return Err("Cannot delete the Global project".to_string());
+        }
+
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.execute("DELETE FROM projects WHERE id = ?1", params![project_id])
+            .map_err(|e| format!("Failed to delete project: {}", e))?;
+
+        Ok(())
     }
 }
