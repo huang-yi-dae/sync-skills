@@ -3,6 +3,7 @@
 
 use crate::hash::compute_id_hash;
 use crate::models::{InstallationInfo, Project, Skill, SkillView, SyncLog, Tool};
+use crate::scanner;
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -666,5 +667,49 @@ impl Database {
             .map_err(|e| format!("Failed to delete project: {}", e))?;
 
         Ok(())
+    }
+
+    /// Get a project's path by ID
+    pub fn get_project_path(&self, project_id: i64) -> Result<String, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.query_row(
+            "SELECT path FROM projects WHERE id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to get project path: {}", e))
+    }
+
+    /// Get tool paths scoped to a project (project_path + tool.project_rel_path)
+    pub fn get_project_tool_paths(&self, project_path: &str) -> Result<Vec<(i64, String, String)>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, global_path, project_rel_path FROM tools")
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let project_base = scanner::expand_path(project_path)?;
+        let paths = stmt
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let _global: String = row.get(1)?;
+                let rel: String = row.get(2)?;
+                Ok((id, _global, rel))
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .map(|(id, _global, rel)| {
+                // Construct full path: project_path / project_rel_path
+                let full_path = if rel.is_empty() {
+                    project_base.to_string_lossy().to_string()
+                } else {
+                    project_base.join(&rel).to_string_lossy().to_string()
+                };
+                (id, full_path, rel)
+            })
+            .collect();
+
+        Ok(paths)
     }
 }

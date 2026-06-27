@@ -241,11 +241,22 @@ async fn full_scan(db: State<'_, DbState>) -> Result<ScanResult, String> {
 async fn scan_scope(
     db: State<'_, DbState>,
     tool_id: Option<i64>,
+    project_id: Option<i64>,
 ) -> Result<ScanResult, String> {
     let db = db.inner().clone();
 
     tokio::task::spawn_blocking(move || -> Result<ScanResult, String> {
-        let all_tool_paths = db.get_tool_paths()?;
+        let pid = project_id.unwrap_or(0);
+
+        // Determine scan paths based on scope
+        let all_tool_paths = if pid != 0 {
+            // Project-level scan: use project path + tool's project_rel_path
+            let project_path = db.get_project_path(pid)?;
+            db.get_project_tool_paths(&project_path)?
+        } else {
+            // Global scan: use global paths
+            db.get_tool_paths()?
+        };
 
         let tool_paths = match tool_id {
             Some(tid) => all_tool_paths

@@ -116,7 +116,17 @@ function App() {
   async function handleScan() {
     setScanning(true);
     try {
-      const result = await invoke<ScanResult>("full_scan");
+      let result: ScanResult;
+      if (activeTab === "projects" && selectedProject !== 0) {
+        // Project-level scan: scan project-specific paths
+        result = await invoke<ScanResult>("scan_scope", {
+          toolId: null,
+          projectId: selectedProject,
+        });
+      } else {
+        // Global scan
+        result = await invoke<ScanResult>("full_scan");
+      }
       await loadSkills();
 
       const parts: string[] = [];
@@ -239,11 +249,21 @@ function App() {
       addToast("error", "Global path cannot be empty");
       return;
     }
+    const gPath = editGlobalPath.trim();
+    if (
+      !gPath.startsWith("/") &&
+      !gPath.startsWith("~") &&
+      !/^[A-Za-z]:[\\/]/.test(gPath) &&
+      !gPath.startsWith("\\\\")
+    ) {
+      addToast("error", "Global path must be absolute (start with /, ~/, drive letter, or \\\\)");
+      return;
+    }
     try {
       await invoke("update_tool_path", {
         toolId,
-        globalPath: editGlobalPath,
-        projectRelPath: editRelPath,
+        globalPath: gPath,
+        projectRelPath: editRelPath.trim(),
       });
       setEditingTool(null);
       await loadTools();
@@ -258,18 +278,35 @@ function App() {
       addToast("error", "Name and global path are required");
       return;
     }
+    // Validate global path is absolute
+    const gPath = newToolGlobal.trim();
+    if (
+      !gPath.startsWith("/") &&
+      !gPath.startsWith("~") &&
+      !/^[A-Za-z]:[\\/]/.test(gPath) &&
+      !gPath.startsWith("\\\\")
+    ) {
+      addToast("error", "Global path must be absolute (start with /, ~/, drive letter, or \\\\)");
+      return;
+    }
+    // Validate relative path doesn't start with .
+    const rPath = newToolRel.trim();
+    if (rPath.startsWith("./") || rPath.startsWith("../") || rPath === ".") {
+      addToast("error", "Project relative path must not start with ./ or ../");
+      return;
+    }
     try {
       await invoke("add_tool", {
-        name: newToolName,
-        globalPath: newToolGlobal,
-        projectRelPath: newToolRel,
+        name: newToolName.trim(),
+        globalPath: gPath,
+        projectRelPath: rPath,
       });
       setShowAddTool(false);
       setNewToolName("");
       setNewToolGlobal("");
       setNewToolRel("");
       await loadTools();
-      addToast("success", `Tool "${newToolName}" added`);
+      addToast("success", `Tool "${newToolName.trim()}" added`);
     } catch (e) {
       addToast("error", `Failed to add tool: ${e}`);
     }
@@ -279,8 +316,12 @@ function App() {
     if (!confirm(`Delete tool "${toolName}"? This will remove all related installations and sync logs.`)) return;
     try {
       await invoke("delete_tool", { toolId });
-      await loadTools();
-      await loadSkills();
+      // Clear editing state if we were editing this tool
+      if (editingTool === toolId) {
+        setEditingTool(null);
+      }
+      // Reload both tools and skills to ensure clean UI state
+      await Promise.all([loadTools(), loadSkills()]);
       addToast("success", `Tool "${toolName}" deleted`);
     } catch (e) {
       addToast("error", `Failed to delete tool: ${e}`);
@@ -492,12 +533,9 @@ function App() {
       {/* Project sub-navigation */}
       {activeTab === "projects" && (
         <div className="project-nav">
-          <button
-            className={`project-btn ${selectedProject === 0 ? "project-active" : ""}`}
-            onClick={() => setSelectedProject(0)}
-          >
-            Global
-          </button>
+          {projects.length === 0 && (
+            <span className="project-empty-hint">No projects yet. Add one to get started.</span>
+          )}
           {projects.map((p) => (
             <div key={p.id} className="project-btn-group">
               <button
