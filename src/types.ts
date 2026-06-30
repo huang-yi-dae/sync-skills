@@ -61,14 +61,15 @@ export interface SkillUpdate {
 
 export interface SyncLog {
   id: number;
-  skill_id: number;
+  skill_id: number | null;
   skill_name: string | null;
-  tool_id: number;
+  tool_id: number | null;
   tool_name: string | null;
   project_id: number;
-  direction: string;
+  action: string;
+  direction: string | null;
   status: string;
-  error_message: string | null;
+  detail: string | null;
   created_at: string;
 }
 

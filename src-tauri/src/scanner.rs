@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Skill Manager Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::hash::compute_content_hash;
+use crate::hash::{compute_content_hash, compute_core_hash};
 use crate::models::DiscoveredSkill;
 use std::fs;
 use std::path::Path;
@@ -91,17 +91,20 @@ fn parse_skill(dir: &Path, skill_md_path: &Path) -> Result<DiscoveredSkill, Stri
     let content_hash = compute_content_hash(dir)
         .map_err(|e| format!("Hash computation failed: {}", e))?;
 
-    let source_path = dir
-        .canonicalize()
-        .unwrap_or_else(|_| dir.to_path_buf())
-        .to_string_lossy()
-        .to_string();
+    // Compute core identity hash (SKILL.md only — stable across copies)
+    let core_hash = compute_core_hash(skill_md_path)
+        .map_err(|e| format!("Core hash computation failed: {}", e))?;
+
+    let source_path = normalize_path(
+        &dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf()),
+    );
 
     Ok(DiscoveredSkill {
         name,
         description,
         source_path,
         content_hash,
+        core_hash,
     })
 }
 
@@ -187,12 +190,37 @@ fn is_hidden(path: &Path) -> bool {
 
 /// Expand ~ to home directory
 pub fn expand_path(path: &str) -> Result<std::path::PathBuf, String> {
-    if path.starts_with("~/") || path.starts_with("~\\") {
+    let expanded = if path.starts_with("~/") || path.starts_with("~\\") {
         let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-        Ok(home.join(&path[2..]))
+        home.join(&path[2..])
     } else if path == "~" {
-        dirs::home_dir().ok_or("Cannot find home directory".to_string())
+        dirs::home_dir().ok_or("Cannot find home directory".to_string())?
     } else {
-        Ok(std::path::PathBuf::from(path))
+        std::path::PathBuf::from(path)
+    };
+    Ok(expanded)
+}
+
+/// Normalize a path for consistent comparison and storage.
+/// On Windows: strips `\\?\` prefix and converts all separators to backslashes.
+/// On Unix: no-op (just returns the string as-is).
+pub fn normalize_path(path: &Path) -> String {
+    let s = path.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        // Strip \\?\ or \\\\?\\ prefix
+        let stripped = if s.starts_with(r"\\?\") {
+            s[4..].to_string()
+        } else {
+            s
+        };
+        // Convert all forward slashes to backslashes
+        stripped.replace('/', "\\")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        s
     }
 }

@@ -31,6 +31,7 @@ pub struct Skill {
     pub description: Option<String>,
     pub source_path: String,
     pub content_hash: String,
+    pub core_hash: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -77,14 +78,15 @@ pub struct SkillUpdate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncLog {
     pub id: i64,
-    pub skill_id: i64,
+    pub skill_id: Option<i64>,
     pub skill_name: Option<String>,
-    pub tool_id: i64,
+    pub tool_id: Option<i64>,
     pub tool_name: Option<String>,
     pub project_id: i64,
-    pub direction: String,
+    pub action: String,
+    pub direction: Option<String>,
     pub status: String,
-    pub error_message: Option<String>,
+    pub detail: Option<String>,
     pub created_at: String,
 }
 
@@ -104,4 +106,5 @@ pub struct DiscoveredSkill {
     pub description: Option<String>,
     pub source_path: String,
     pub content_hash: String,
+    pub core_hash: String,
 }

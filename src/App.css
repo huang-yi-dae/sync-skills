@@ -875,6 +875,22 @@ body::before {
   color: var(--teal);
 }
 
+.action-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.action-scan { background: var(--info-dim); color: var(--info); }
+.action-sync { background: var(--teal-dim); color: var(--teal); }
+.action-toggle_on { background: var(--success-dim); color: var(--success); }
+.action-toggle_off { background: rgba(142, 142, 160, 0.1); color: var(--text-secondary); }
+.action-add_tool, .action-add_project { background: var(--success-dim); color: var(--success); }
+.action-delete_tool, .action-delete_project { background: var(--error-dim); color: var(--error); }
+
 .status-badge {
   display: inline-block;
   padding: 2px 8px;

@@ -76,11 +76,13 @@ impl Database {
                 description     TEXT,
                 source_path     TEXT    NOT NULL UNIQUE,
                 content_hash    TEXT    NOT NULL,
+                core_hash       TEXT    NOT NULL DEFAULT '',
                 created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_core_hash ON skills(core_hash) WHERE core_hash != '';
 
             CREATE TABLE IF NOT EXISTS skill_installations (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,26 +101,157 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_inst_tool ON skill_installations(tool_id);
             CREATE INDEX IF NOT EXISTS idx_inst_project ON skill_installations(project_id);
             CREATE INDEX IF NOT EXISTS idx_inst_status ON skill_installations(status);
-
-            CREATE TABLE IF NOT EXISTS sync_logs (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                skill_id        INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
-                tool_id         INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
-                project_id      INTEGER NOT NULL DEFAULT 0 REFERENCES projects(id) ON DELETE CASCADE,
-                direction       TEXT    NOT NULL CHECK (direction IN ('to_ssot', 'from_ssot')),
-                status          TEXT    NOT NULL CHECK (status IN ('success', 'failed')),
-                error_message   TEXT,
-                created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_log_skill ON sync_logs(skill_id);
-            CREATE INDEX IF NOT EXISTS idx_log_project ON sync_logs(project_id);
-            CREATE INDEX IF NOT EXISTS idx_log_direction ON sync_logs(direction);
-            CREATE INDEX IF NOT EXISTS idx_log_status ON sync_logs(status);
-            CREATE INDEX IF NOT EXISTS idx_log_created ON sync_logs(created_at);
             ",
         )
         .map_err(|e| format!("Failed to create schema: {}", e))?;
+
+        // Migrate sync_logs: check if old schema exists (has 'direction' CHECK but no 'action' column)
+        let needs_migration: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('sync_logs') WHERE name = 'action'")
+            .and_then(|mut stmt| {
+                stmt.query_row([], |row| row.get::<_, i64>(0))
+            })
+            .map(|count| count == 0) // action column missing → needs migration
+            .unwrap_or(true); // table doesn't exist → will be created fresh
+
+        if needs_migration {
+            // Check if old table exists
+            let old_exists: bool = conn
+                .prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_logs'")
+                .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+                .map(|c| c > 0)
+                .unwrap_or(false);
+
+            if old_exists {
+                // Migrate: rename old table, create new, copy data, drop old
+                conn.execute_batch(
+                    "
+                    ALTER TABLE sync_logs RENAME TO sync_logs_old;
+                    ",
+                )
+                .map_err(|e| format!("Migration rename failed: {}", e))?;
+            }
+            // else: no old table, just create fresh below
+
+            // Create new sync_logs with expanded schema
+            conn.execute_batch(
+                "
+                CREATE TABLE IF NOT EXISTS sync_logs (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    skill_id        INTEGER REFERENCES skills(id) ON DELETE SET NULL,
+                    tool_id         INTEGER REFERENCES tools(id) ON DELETE SET NULL,
+                    project_id      INTEGER NOT NULL DEFAULT 0 REFERENCES projects(id) ON DELETE CASCADE,
+                    action          TEXT    NOT NULL DEFAULT 'sync',
+                    direction       TEXT,
+                    status          TEXT    NOT NULL CHECK (status IN ('success', 'failed')),
+                    detail          TEXT,
+                    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_log_skill ON sync_logs(skill_id);
+                CREATE INDEX IF NOT EXISTS idx_log_project ON sync_logs(project_id);
+                CREATE INDEX IF NOT EXISTS idx_log_action ON sync_logs(action);
+                CREATE INDEX IF NOT EXISTS idx_log_status ON sync_logs(status);
+                CREATE INDEX IF NOT EXISTS idx_log_created ON sync_logs(created_at);
+                ",
+            )
+            .map_err(|e| format!("Migration create failed: {}", e))?;
+
+            if old_exists {
+                // Copy data from old table
+                conn.execute_batch(
+                    "
+                    INSERT INTO sync_logs (skill_id, tool_id, project_id, action, direction, status, detail, created_at)
+                    SELECT skill_id, tool_id, project_id, 'sync', direction, status, error_message, created_at
+                    FROM sync_logs_old;
+
+                    DROP TABLE sync_logs_old;
+                    ",
+                )
+                .map_err(|e| format!("Migration copy failed: {}", e))?;
+            }
+        }
+
+        // Migrate: normalize source_path in skills table (strip \\?\ prefix on Windows)
+        #[cfg(target_os = "windows")]
+        {
+            conn.execute_batch(
+                "UPDATE skills SET source_path = SUBSTR(source_path, 5)
+                 WHERE source_path LIKE '\\\\?\\%';",
+            )
+            .map_err(|e| format!("Source path migration failed: {}", e))?;
+        }
+
+        // Migrate: detect old (pre-JS-safe) tool IDs and clear stale data.
+        // Old IDs were full i64 values that exceed JS Number.MAX_SAFE_INTEGER.
+        // If any old seed tool is found, wipe all data so seed_data() can
+        // re-populate with new JS-safe IDs.
+        {
+            let old_seed_ids: [i64; 5] = [
+                -768412307910267356,  // old Claude Code
+                -5387663353590988835, // old Codex CLI
+                8996106060148633658,  // old OpenCode
+                -1843142830140024973, // old Gemini CLI
+                6180056807951602058,  // old Cline
+            ];
+            let placeholders = old_seed_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let query = format!("SELECT COUNT(*) FROM tools WHERE id IN ({})", placeholders);
+            let count: i64 = conn
+                .query_row(&query, rusqlite::params_from_iter(old_seed_ids.iter()), |row| row.get(0))
+                .unwrap_or(0);
+            if count > 0 {
+                // Old IDs detected — clear all data (FK cascades handle dependencies)
+                conn.execute_batch(
+                    "DELETE FROM skill_installations;
+                     DELETE FROM sync_logs;
+                     DELETE FROM skills;
+                     DELETE FROM tools;
+                     DELETE FROM projects;",
+                )
+                .map_err(|e| format!("Stale data migration failed: {}", e))?;
+            }
+        }
+
+        // Migrate: add core_hash column to skills table if missing
+        {
+            let has_core_hash: bool = conn
+                .prepare("SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = 'core_hash'")
+                .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+                .map(|count| count > 0)
+                .unwrap_or(false);
+
+            if !has_core_hash {
+                conn.execute_batch(
+                    "ALTER TABLE skills ADD COLUMN core_hash TEXT NOT NULL DEFAULT '';"
+                ).map_err(|e| format!("Failed to add core_hash column: {}", e))?;
+
+                // Backfill: compute core_hash for existing skills from their SKILL.md
+                let skills_to_backfill: Vec<(i64, String)> = {
+                    let mut stmt = conn
+                        .prepare("SELECT id, source_path FROM skills WHERE core_hash = ''")
+                        .map_err(|e| format!("Backfill query failed: {}", e))?;
+                    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                        .map_err(|e| format!("Backfill query_map failed: {}", e))?;
+                    let result: Vec<(i64, String)> = rows.filter_map(|r| r.ok()).collect();
+                    result
+                };
+
+                for (id, source_path) in skills_to_backfill {
+                    let skill_md = std::path::Path::new(&source_path).join("SKILL.md");
+                    if let Ok(hash) = crate::hash::compute_core_hash(&skill_md) {
+                        let _ = conn.execute(
+                            "UPDATE skills SET core_hash = ?1 WHERE id = ?2",
+                            params![hash, id],
+                        );
+                    }
+                }
+
+                // Create unique index on core_hash (excluding empty strings)
+                let _ = conn.execute_batch(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_core_hash ON skills(core_hash) WHERE core_hash != '';"
+                );
+            }
+        }
 
         Ok(())
     }
@@ -134,13 +267,13 @@ impl Database {
         )
         .map_err(|e| format!("Failed to seed global project: {}", e))?;
 
-        // Preset tools with pre-computed hash IDs
+        // Preset tools with pre-computed hash IDs (JS-safe, < 2^53)
         let tools = [
-            (-768412307910267356i64, "Claude Code", "~/.claude/skills/", ".claude/skills/"),
-            (-5387663353590988835i64, "Codex CLI", "~/.codex/skills/", ".codex/skills/"),
-            (8996106060148633658i64, "OpenCode", "~/.opencode/skills/", ".opencode/skills/"),
-            (-1843142830140024973i64, "Gemini CLI", "~/.gemini/skills/", ".gemini/skills/"),
-            (6180056807951602058i64, "Cline", "~/.cline/skills/", ".cline/skills/"),
+            (6206827997457956i64, "Claude Code", "~/.claude/skills/", ".claude/skills/"),
+            (7648999998865373i64, "Codex CLI", "~/.codex/skills/", ".codex/skills/"),
+            (6921203917123642i64, "OpenCode", "~/.opencode/skills/", ".opencode/skills/"),
+            (3333017081878387i64, "Gemini CLI", "~/.gemini/skills/", ".gemini/skills/"),
+            (1118119199281546i64, "Cline", "~/.cline/skills/", ".cline/skills/"),
         ];
 
         for (id, name, global_path, project_rel_path) in tools {
@@ -237,41 +370,71 @@ impl Database {
         Ok(())
     }
 
-    /// Upsert a skill (insert or update on conflict)
+    /// Upsert a skill with two-level dedup:
+    /// 1. source_path (primary): same location → same skill, even if content changed
+    /// 2. core_hash (secondary): same content in different location → same skill
+    /// Returns (skill_id, is_new).
     pub fn upsert_skill(
         &self,
         name: &str,
         description: Option<&str>,
         source_path: &str,
         content_hash: &str,
+        core_hash: &str,
     ) -> Result<(i64, bool), String> {
-        let id = compute_id_hash(source_path);
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
-        // Check if exists
-        let exists: bool = conn
+        // 1. Check by source_path first (same location = same skill, even if edited)
+        let existing_by_path: Option<i64> = conn
             .query_row(
-                "SELECT COUNT(*) > 0 FROM skills WHERE source_path = ?1",
+                "SELECT id FROM skills WHERE source_path = ?1",
                 params![source_path],
                 |row| row.get(0),
             )
-            .unwrap_or(false);
+            .ok();
 
-        if exists {
+        if let Some(id) = existing_by_path {
             conn.execute(
-                "UPDATE skills SET name = ?1, description = ?2, content_hash = ?3, updated_at = datetime('now') WHERE source_path = ?4",
-                params![name, description, content_hash, source_path],
+                "UPDATE skills SET name = ?1, description = ?2, content_hash = ?3,
+                 core_hash = ?4, updated_at = datetime('now')
+                 WHERE id = ?5",
+                params![name, description, content_hash, core_hash, id],
             )
             .map_err(|e| format!("Failed to update skill: {}", e))?;
-            Ok((id, false))
-        } else {
-            conn.execute(
-                "INSERT INTO skills (id, name, description, source_path, content_hash) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![id, name, description, source_path, content_hash],
-            )
-            .map_err(|e| format!("Failed to insert skill: {}", e))?;
-            Ok((id, true))
+            return Ok((id, false));
         }
+
+        // 2. Check by core_hash (same content in a different directory = same skill)
+        let existing_by_core: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM skills WHERE core_hash = ?1 AND core_hash != ''",
+                params![core_hash],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(id) = existing_by_core {
+            // Same skill content found at a different location — reuse existing record
+            // Don't overwrite source_path (keep the original location as canonical)
+            conn.execute(
+                "UPDATE skills SET name = ?1, description = ?2, content_hash = ?3,
+                 updated_at = datetime('now')
+                 WHERE id = ?4",
+                params![name, description, content_hash, id],
+            )
+            .map_err(|e| format!("Failed to update skill: {}", e))?;
+            return Ok((id, false));
+        }
+
+        // 3. Brand new skill — insert
+        let id = compute_id_hash(source_path);
+        conn.execute(
+            "INSERT INTO skills (id, name, description, source_path, content_hash, core_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, name, description, source_path, content_hash, core_hash],
+        )
+        .map_err(|e| format!("Failed to insert skill: {}", e))?;
+        Ok((id, true))
     }
 
     /// List all skills
@@ -279,7 +442,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, name, description, source_path, content_hash, created_at, updated_at FROM skills ORDER BY name")
+            .prepare("SELECT id, name, description, source_path, content_hash, core_hash, created_at, updated_at FROM skills ORDER BY name")
             .map_err(|e| format!("Prepare error: {}", e))?;
 
         let skills = stmt
@@ -290,8 +453,9 @@ impl Database {
                     description: row.get(2)?,
                     source_path: row.get(3)?,
                     content_hash: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    core_hash: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             })
             .map_err(|e| format!("Query error: {}", e))?
@@ -321,6 +485,7 @@ impl Database {
     }
 
     /// Get skill's existing content_hash
+    #[allow(dead_code)] // Reserved for future use
     pub fn get_skill_hash(&self, source_path: &str) -> Result<Option<String>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
@@ -344,7 +509,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         conn.query_row(
-            "SELECT id, name, description, source_path, content_hash, created_at, updated_at FROM skills WHERE id = ?1",
+            "SELECT id, name, description, source_path, content_hash, core_hash, created_at, updated_at FROM skills WHERE id = ?1",
             params![skill_id],
             |row| {
                 Ok(Skill {
@@ -353,40 +518,103 @@ impl Database {
                     description: row.get(2)?,
                     source_path: row.get(3)?,
                     content_hash: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    core_hash: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             },
         )
         .map_err(|e| format!("Failed to get skill: {}", e))
     }
 
+    /// Look up a skill by its core_hash (SKILL.md content hash).
+    /// Returns the skill ID if found, None otherwise.
+    pub fn get_skill_id_by_core_hash(&self, core_hash: &str) -> Result<Option<i64>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let result = conn.query_row(
+            "SELECT id FROM skills WHERE core_hash = ?1 AND core_hash != ''",
+            params![core_hash],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
     /// List skills with installation status (SkillView)
-    pub fn list_skills_with_status(&self, _project_id: i64) -> Result<Vec<SkillView>, String> {
+    /// Filters skills by source_path prefix:
+    /// - project_id=0 (Global): skills under any tool's global_path
+    /// - project_id>0 (Project): skills under the project's directory
+    pub fn list_skills_with_status(&self, project_id: i64) -> Result<Vec<SkillView>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
-        // Get all skills
-        let mut skill_stmt = conn
-            .prepare("SELECT id, name, description, source_path, content_hash, created_at, updated_at FROM skills ORDER BY name")
-            .map_err(|e| format!("Prepare error: {}", e))?;
+        // Step 1: Determine path prefix(es) for filtering (normalized)
+        let path_prefixes: Vec<String> = if project_id == 0 {
+            // Global: skills whose source_path is under any tool's global_path
+            let mut stmt = conn
+                .prepare("SELECT global_path FROM tools")
+                .map_err(|e| format!("Prepare error: {}", e))?;
+            let paths: Vec<String> = stmt
+                .query_map([], |row| row.get(0))
+                .map_err(|e| format!("Query error: {}", e))?
+                .filter_map(|r| r.ok())
+                .filter_map(|p: String| scanner::expand_path(&p).ok())
+                .map(|p| scanner::normalize_path(&p))
+                .collect();
+            paths
+        } else {
+            // Project: skills whose source_path is under the project's path
+            let project_path: String = conn
+                .query_row("SELECT path FROM projects WHERE id = ?1", params![project_id], |row| row.get(0))
+                .map_err(|e| format!("Failed to get project path: {}", e))?;
+            let expanded = scanner::expand_path(&project_path)
+                .map_err(|e| format!("Failed to expand project path: {}", e))?;
+            vec![scanner::normalize_path(&expanded)]
+        };
 
-        let skills: Vec<Skill> = skill_stmt
-            .query_map([], |row| {
-                Ok(Skill {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    description: row.get(2)?,
-                    source_path: row.get(3)?,
-                    content_hash: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
-                })
-            })
-            .map_err(|e| format!("Query error: {}", e))?
-            .filter_map(|r| r.ok())
-            .collect();
+        // Step 2: Get skills filtered by path prefix
+        let skills: Vec<Skill> = if path_prefixes.is_empty() {
+            // No tools configured or no project path — return empty
+            Vec::new()
+        } else {
+            let mut all_skills: Vec<Skill> = Vec::new();
+            for prefix in &path_prefixes {
+                let pattern = format!("{}%", prefix);
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, name, description, source_path, content_hash, core_hash, created_at, updated_at
+                         FROM skills WHERE source_path LIKE ?1 ORDER BY name",
+                    )
+                    .map_err(|e| format!("Prepare error: {}", e))?;
 
-        // For each skill, get installation info
+                let matched: Vec<Skill> = stmt
+                    .query_map(params![pattern], |row| {
+                        Ok(Skill {
+                            id: row.get(0)?,
+                            name: row.get(1)?,
+                            description: row.get(2)?,
+                            source_path: row.get(3)?,
+                            content_hash: row.get(4)?,
+                            core_hash: row.get(5)?,
+                            created_at: row.get(6)?,
+                            updated_at: row.get(7)?,
+                        })
+                    })
+                    .map_err(|e| format!("Query error: {}", e))?
+                    .filter_map(|r| r.ok())
+                    .collect();
+
+                all_skills.extend(matched);
+            }
+            // Deduplicate by skill id (in case multiple prefixes match the same skill)
+            all_skills.sort_by_key(|s| s.id);
+            all_skills.dedup_by_key(|s| s.id);
+            all_skills
+        };
+
+        // Step 3: For each skill, get installation info for the given project_id
         let mut views = Vec::new();
         for skill in skills {
             let mut inst_stmt = conn
@@ -394,12 +622,12 @@ impl Database {
                     "SELECT si.tool_id, t.name, si.status, si.synced_at
                      FROM skill_installations si
                      JOIN tools t ON t.id = si.tool_id
-                     WHERE si.skill_id = ?1 AND si.project_id = 0",
+                     WHERE si.skill_id = ?1 AND si.project_id = ?2",
                 )
                 .map_err(|e| format!("Prepare error: {}", e))?;
 
             let installations: Vec<InstallationInfo> = inst_stmt
-                .query_map(params![skill.id], |row| {
+                .query_map(params![skill.id, project_id], |row| {
                     Ok(InstallationInfo {
                         tool_id: row.get(0)?,
                         tool_name: row.get(1)?,
@@ -411,9 +639,8 @@ impl Database {
                 .filter_map(|r| r.ok())
                 .collect();
 
-            let install_count = installations.len();
+            let install_count = installations.iter().filter(|i| i.status == "active").count();
 
-            // Check if skill has an update (content_hash differs from any active installation's synced hash)
             let has_update = false; // Will be set by check_updates logic
 
             views.push(SkillView {
@@ -451,6 +678,25 @@ impl Database {
         Ok(())
     }
 
+    /// Auto-detect installation: insert an active record only if no record exists yet.
+    /// Used during scan to mark skills that physically exist in a tool's directory.
+    /// Does NOT override existing records (preserves user's explicit toggle-off).
+    pub fn ensure_installation(
+        &self,
+        skill_id: i64,
+        tool_id: i64,
+        project_id: i64,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO skill_installations (skill_id, tool_id, project_id, status)
+             VALUES (?1, ?2, ?3, 'active')",
+            params![skill_id, tool_id, project_id],
+        )
+        .map_err(|e| format!("Failed to ensure installation: {}", e))?;
+        Ok(())
+    }
+
     /// Get all active installations for a skill (for sync targeting)
     pub fn get_active_installations(&self, skill_id: i64, project_id: i64) -> Result<Vec<(i64, String)>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -475,6 +721,55 @@ impl Database {
         Ok(results)
     }
 
+    /// Get active installation target paths, resolved per project scope.
+    /// - project_id == 0 (Global): returns tool's global_path (e.g. ~/.claude/skills/)
+    /// - project_id > 0 (Project): returns project_path + tool's project_rel_path
+    pub fn get_active_installation_paths(
+        &self,
+        skill_id: i64,
+        project_id: i64,
+    ) -> Result<Vec<(i64, String)>, String> {
+        if project_id == 0 {
+            // Global: use global_path directly
+            return self.get_active_installations(skill_id, 0);
+        }
+
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        // Get project base path
+        let project_path: String = conn
+            .query_row("SELECT path FROM projects WHERE id = ?1", params![project_id], |row| row.get(0))
+            .map_err(|e| format!("Failed to get project path: {}", e))?;
+        let project_base = scanner::expand_path(&project_path)?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT si.tool_id, t.project_rel_path
+                 FROM skill_installations si
+                 JOIN tools t ON t.id = si.tool_id
+                 WHERE si.skill_id = ?1 AND si.project_id = ?2 AND si.status = 'active'",
+            )
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let results = stmt
+            .query_map(params![skill_id, project_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .map(|(tool_id, rel_path)| {
+                let full_path = if rel_path.is_empty() {
+                    scanner::normalize_path(&project_base)
+                } else {
+                    scanner::normalize_path(&project_base.join(&rel_path))
+                };
+                (tool_id, full_path)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
     /// Update synced_at timestamp for an installation
     pub fn update_synced_at(&self, skill_id: i64, tool_id: i64, project_id: i64) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -489,7 +784,24 @@ impl Database {
         Ok(())
     }
 
-    /// Insert a sync log entry
+    /// Refresh stored hashes for a skill after sync (clears update indicator)
+    pub fn update_skill_hashes(
+        &self,
+        skill_id: i64,
+        content_hash: &str,
+        core_hash: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE skills SET content_hash = ?1, core_hash = ?2, updated_at = datetime('now')
+             WHERE id = ?3",
+            params![content_hash, core_hash, skill_id],
+        )
+        .map_err(|e| format!("Failed to update skill hashes: {}", e))?;
+        Ok(())
+    }
+
+    /// Insert a sync log entry (for sync operations with direction)
     pub fn insert_sync_log(
         &self,
         skill_id: i64,
@@ -502,13 +814,57 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         conn.execute(
-            "INSERT INTO sync_logs (skill_id, tool_id, project_id, direction, status, error_message)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO sync_logs (skill_id, tool_id, project_id, action, direction, status, detail)
+             VALUES (?1, ?2, ?3, 'sync', ?4, ?5, ?6)",
             params![skill_id, tool_id, project_id, direction, status, error_message],
         )
         .map_err(|e| format!("Failed to insert sync log: {}", e))?;
 
         Ok(())
+    }
+
+    /// Insert an action log entry (for non-sync operations: scan, toggle, add, delete, etc.)
+    pub fn insert_action_log(
+        &self,
+        action: &str,
+        skill_id: Option<i64>,
+        tool_id: Option<i64>,
+        project_id: i64,
+        status: &str,
+        detail: Option<&str>,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        conn.execute(
+            "INSERT INTO sync_logs (skill_id, tool_id, project_id, action, status, detail)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![skill_id, tool_id, project_id, action, status, detail],
+        )
+        .map_err(|e| format!("Failed to insert action log: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Get a tool's name by ID (for logging before deletion)
+    pub fn get_tool_name(&self, tool_id: i64) -> Result<String, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.query_row(
+            "SELECT name FROM tools WHERE id = ?1",
+            params![tool_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to get tool name: {}", e))
+    }
+
+    /// Get a project's name by ID (for logging before deletion)
+    pub fn get_project_name(&self, project_id: i64) -> Result<String, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.query_row(
+            "SELECT name FROM projects WHERE id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to get project name: {}", e))
     }
 
     /// Query sync logs with optional filters
@@ -520,7 +876,7 @@ impl Database {
         let query = match skill_id {
             Some(sid) => format!(
                 "SELECT sl.id, sl.skill_id, s.name, sl.tool_id, t.name, sl.project_id,
-                        sl.direction, sl.status, sl.error_message, sl.created_at
+                        sl.action, sl.direction, sl.status, sl.detail, sl.created_at
                  FROM sync_logs sl
                  LEFT JOIN skills s ON s.id = sl.skill_id
                  LEFT JOIN tools t ON t.id = sl.tool_id
@@ -530,7 +886,7 @@ impl Database {
             ),
             None => format!(
                 "SELECT sl.id, sl.skill_id, s.name, sl.tool_id, t.name, sl.project_id,
-                        sl.direction, sl.status, sl.error_message, sl.created_at
+                        sl.action, sl.direction, sl.status, sl.detail, sl.created_at
                  FROM sync_logs sl
                  LEFT JOIN skills s ON s.id = sl.skill_id
                  LEFT JOIN tools t ON t.id = sl.tool_id
@@ -552,10 +908,11 @@ impl Database {
                     tool_id: row.get(3)?,
                     tool_name: row.get(4)?,
                     project_id: row.get(5)?,
-                    direction: row.get(6)?,
-                    status: row.get(7)?,
-                    error_message: row.get(8)?,
-                    created_at: row.get(9)?,
+                    action: row.get(6)?,
+                    direction: row.get(7)?,
+                    status: row.get(8)?,
+                    detail: row.get(9)?,
+                    created_at: row.get(10)?,
                 })
             })
             .map_err(|e| format!("Query error: {}", e))?
@@ -702,9 +1059,9 @@ impl Database {
             .map(|(id, _global, rel)| {
                 // Construct full path: project_path / project_rel_path
                 let full_path = if rel.is_empty() {
-                    project_base.to_string_lossy().to_string()
+                    scanner::normalize_path(&project_base)
                 } else {
-                    project_base.join(&rel).to_string_lossy().to_string()
+                    scanner::normalize_path(&project_base.join(&rel))
                 };
                 (id, full_path, rel)
             })

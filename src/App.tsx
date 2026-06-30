@@ -55,6 +55,23 @@ function App() {
     loadSettings();
   }, []);
 
+  // Sync selectedProject when tab changes
+  useEffect(() => {
+    if (activeTab === "global") {
+      setSelectedProject((prev) => (prev !== 0 ? 0 : prev));
+    } else {
+      // Projects tab: auto-select first project if none selected
+      setSelectedProject((prev) => {
+        if (prev === 0 && projects.length > 0) return projects[0].id;
+        if (prev !== 0 && !projects.some((p) => p.id === prev)) {
+          // Selected project was deleted, pick first available
+          return projects.length > 0 ? projects[0].id : 0;
+        }
+        return prev;
+      });
+    }
+  }, [activeTab, projects]);
+
   // Reload skills when project changes
   useEffect(() => {
     loadSkills();
@@ -188,8 +205,9 @@ function App() {
   async function handleSyncSkill(skillId: number) {
     setSyncing((prev) => new Set(prev).add(skillId));
     try {
-      const result = await invoke<SyncResult>("sync_skill", { skillId });
+      const result = await invoke<SyncResult>("sync_skill", { skillId, projectId: selectedProject });
       await loadSkills();
+      await handleCheckUpdates();
 
       if (result.errors.length > 0) {
         addToast("error", `Sync ${result.skill_name}: ${result.errors.join(", ")}`);
@@ -212,6 +230,7 @@ function App() {
     try {
       const results = await invoke<SyncResult[]>("sync_all_pending");
       await loadSkills();
+      await handleCheckUpdates();
 
       const totalSynced = results.reduce((sum, r) => sum + r.synced_to, 0);
       const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
@@ -315,15 +334,25 @@ function App() {
   async function handleDeleteTool(toolId: number, toolName: string) {
     if (!confirm(`Delete tool "${toolName}"? This will remove all related installations and sync logs.`)) return;
     try {
-      await invoke("delete_tool", { toolId });
-      // Clear editing state if we were editing this tool
+      // Optimistic update: immediately remove tool from skills and tool list
+      setSkills((prev) =>
+        prev.map((s) => {
+          const filtered = s.installed_tools.filter((t) => t.tool_id !== toolId);
+          return { ...s, installed_tools: filtered, install_count: filtered.length };
+        })
+      );
+      setTools((prev) => prev.filter((t) => t.id !== toolId));
       if (editingTool === toolId) {
         setEditingTool(null);
       }
-      // Reload both tools and skills to ensure clean UI state
+
+      await invoke("delete_tool", { toolId, toolName });
+      // Reload to get authoritative state from backend
       await Promise.all([loadTools(), loadSkills()]);
       addToast("success", `Tool "${toolName}" deleted`);
     } catch (e) {
+      // Rollback on failure: reload everything
+      await Promise.all([loadTools(), loadSkills()]);
       addToast("error", `Failed to delete tool: ${e}`);
     }
   }
@@ -355,7 +384,11 @@ function App() {
     if (!confirm(`Delete project "${projectName}"? All related data will be removed.`)) return;
     try {
       await invoke("delete_project", { projectId });
-      if (selectedProject === projectId) setSelectedProject(0);
+      if (selectedProject === projectId) {
+        // Auto-select next project or fall back to global
+        const remaining = projects.filter((p) => p.id !== projectId);
+        setSelectedProject(remaining.length > 0 ? remaining[0].id : 0);
+      }
       await loadProjects();
       addToast("success", `Project "${projectName}" deleted`);
     } catch (e) {
@@ -430,10 +463,21 @@ function App() {
   }
 
   function renderLogsPanel() {
+    const actionLabels: Record<string, string> = {
+      scan: "Scan",
+      sync: "Sync",
+      toggle_on: "Enable",
+      toggle_off: "Disable",
+      add_tool: "Add Tool",
+      delete_tool: "Delete Tool",
+      add_project: "Add Project",
+      delete_project: "Delete Project",
+    };
+
     return (
       <section className="section">
         <div className="panel-header">
-          <h2 className="section-title">Sync Logs</h2>
+          <h2 className="section-title">Activity Logs</h2>
           <div className="panel-actions">
             <button className="btn btn-small" onClick={loadSyncLogs}>Refresh</button>
             <button className="btn btn-secondary" onClick={() => setActivePanel("main")}>Back</button>
@@ -442,7 +486,7 @@ function App() {
 
         {syncLogs.length === 0 ? (
           <div className="empty-state">
-            <p>No sync operations recorded yet.</p>
+            <p>No operations recorded yet.</p>
           </div>
         ) : (
           <div className="log-table-wrapper">
@@ -450,30 +494,35 @@ function App() {
               <thead>
                 <tr>
                   <th>Time</th>
+                  <th>Action</th>
                   <th>Skill</th>
                   <th>Tool</th>
-                  <th>Direction</th>
                   <th>Status</th>
-                  <th>Error</th>
+                  <th>Detail</th>
                 </tr>
               </thead>
               <tbody>
                 {syncLogs.map((log) => (
                   <tr key={log.id} className={`log-row log-${log.status}`}>
                     <td className="log-time">{log.created_at}</td>
-                    <td>{log.skill_name || "—"}</td>
-                    <td>{log.tool_name || "SSOT"}</td>
                     <td>
-                      <span className={`direction-badge dir-${log.direction}`}>
-                        {log.direction === "to_ssot" ? "→ SSOT" : "← SSOT"}
+                      <span className={`action-badge action-${log.action}`}>
+                        {actionLabels[log.action] || log.action}
                       </span>
+                      {log.direction && (
+                        <span className={`direction-badge dir-${log.direction}`}>
+                          {log.direction === "to_ssot" ? "→ SSOT" : "← SSOT"}
+                        </span>
+                      )}
                     </td>
+                    <td>{log.skill_name || "—"}</td>
+                    <td>{log.tool_name || (log.action === "delete_tool" || log.action === "add_tool" ? log.detail : "—")}</td>
                     <td>
                       <span className={`status-badge status-${log.status}`}>
                         {log.status}
                       </span>
                     </td>
-                    <td className="log-error">{log.error_message || "—"}</td>
+                    <td className="log-error">{log.detail || "—"}</td>
                   </tr>
                 ))}
               </tbody>

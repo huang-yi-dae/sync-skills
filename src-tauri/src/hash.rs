@@ -6,11 +6,16 @@ use std::fs;
 use std::path::Path;
 
 /// Compute an ID hash from a string.
-/// Takes SHA-256, first 8 bytes, little-endian i64.
+/// Takes SHA-256, first 8 bytes, little-endian i64, masked to fit within
+/// JavaScript's Number.MAX_SAFE_INTEGER (2^53 - 1) to prevent precision loss
+/// when IDs are serialized as JSON numbers across the Tauri IPC boundary.
 pub fn compute_id_hash(input: &str) -> i64 {
     let hash = Sha256::digest(input.as_bytes());
     let bytes: [u8; 8] = hash[..8].try_into().unwrap();
-    i64::from_le_bytes(bytes)
+    let raw = u64::from_le_bytes(bytes);
+    // Mask to 53 bits: ensures the result is within JS safe integer range
+    let masked = raw & 0x001F_FFFF_FFFF_FFFF;
+    masked as i64
 }
 
 /// Compute content hash for a directory.
@@ -32,6 +37,17 @@ pub fn compute_content_hash(dir: &Path) -> Result<String, String> {
     }
 
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Compute the core identity hash of a skill by hashing only its SKILL.md file.
+/// Unlike compute_content_hash (which hashes the entire directory), this is stable
+/// across copies: the same skill in different tool directories has the same core_hash.
+/// This follows Git's content-addressable model — identity = content, not location.
+pub fn compute_core_hash(skill_md_path: &Path) -> Result<String, String> {
+    let content = fs::read(skill_md_path)
+        .map_err(|e| format!("Failed to read {:?}: {}", skill_md_path, e))?;
+    let hash = Sha256::digest(&content);
+    Ok(format!("{:x}", hash))
 }
 
 fn collect_files(

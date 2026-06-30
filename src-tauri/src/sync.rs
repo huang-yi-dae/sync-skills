@@ -3,7 +3,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 /// Recursively copy all files from `src` directory to `dst` directory.
 /// Creates `dst` if it doesn't exist. Overwrites existing files.
@@ -43,10 +42,9 @@ pub fn copy_directory(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Atomically replace the `dst` directory with contents from `src`.
-/// Strategy: copy src to a temp directory next to dst, then rename.
-/// On rename failure (cross-volume), falls back to delete+copy.
-pub fn atomic_replace(src: &Path, dst: &Path) -> Result<(), String> {
+/// Replace the `dst` directory with contents from `src`.
+/// Simple strategy: delete old dst if it exists, then copy src to dst.
+pub fn replace_directory(src: &Path, dst: &Path) -> Result<(), String> {
     if !src.exists() || !src.is_dir() {
         return Err(format!("Invalid source directory: {:?}", src));
     }
@@ -55,48 +53,14 @@ pub fn atomic_replace(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(parent)
         .map_err(|e| format!("Failed to create parent directory: {}", e))?;
 
-    // Create temp directory next to target
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let temp_name = format!(".tmp-{}-{}", std::process::id(), timestamp);
-    let temp_dir = parent.join(&temp_name);
-
-    // Copy src to temp
-    copy_directory(src, &temp_dir)?;
-
-    // If dst exists, try rename (atomic on same volume)
+    // Remove old destination if it exists
     if dst.exists() {
-        match fs::rename(dst, &temp_dir.join(".old")) {
-            Ok(()) => {
-                // Rename temp to dst
-                if let Err(e) = fs::rename(&temp_dir, dst) {
-                    // Rollback: rename .old back
-                    let _ = fs::rename(&temp_dir.join(".old"), dst);
-                    let _ = fs::remove_dir_all(&temp_dir);
-                    return Err(format!("Atomic rename failed: {}", e));
-                }
-                // Clean up old
-                let _ = fs::remove_dir_all(&temp_dir.join(".old"));
-            }
-            Err(_) => {
-                // Rename failed (possibly cross-volume), fallback to delete+copy
-                let _ = fs::remove_dir_all(&temp_dir);
-                let _ = fs::remove_dir_all(dst);
-                copy_directory(src, dst)?;
-            }
-        }
-    } else {
-        // dst doesn't exist, just rename temp to dst
-        fs::rename(&temp_dir, dst)
-            .map_err(|e| {
-                let _ = fs::remove_dir_all(&temp_dir);
-                format!("Failed to rename temp to target: {}", e)
-            })?;
+        fs::remove_dir_all(dst)
+            .map_err(|e| format!("Failed to remove old target {:?}: {}", dst, e))?;
     }
 
-    Ok(())
+    // Copy source to destination
+    copy_directory(src, dst)
 }
 
 /// Try to create a symlink from `link_path` pointing to `target`.
@@ -163,6 +127,7 @@ pub fn create_local_marker(dir: &Path) -> Result<(), String> {
 }
 
 /// Check if a skill directory has the `local.md` marker (bidirectional sync).
+#[allow(dead_code)] // Reserved for future use
 pub fn is_local_skill(dir: &Path) -> bool {
     dir.join("local.md").exists()
 }
@@ -185,6 +150,7 @@ pub fn ensure_ssot_dir() -> Result<PathBuf, String> {
 
 /// Resolve a name conflict: if a skill with the same name exists at the target,
 /// append `-local` suffix.
+#[allow(dead_code)] // Reserved for future use
 pub fn resolve_conflict(target_parent: &Path, skill_name: &str) -> PathBuf {
     let target = target_parent.join(skill_name);
     if target.exists() {
