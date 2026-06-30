@@ -999,6 +999,122 @@ body::before {
   margin-top: 20px;
 }
 
+/* ==================== Scan Result Modal ==================== */
+
+.scan-result-modal {
+  min-width: 520px;
+  max-width: 640px;
+}
+
+.scan-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.scan-summary-item {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 4px 12px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+}
+
+.scan-summary-item strong {
+  color: var(--text);
+}
+
+.scan-summary-item.scan-new {
+  background: var(--success-dim);
+  color: var(--success);
+  font-weight: 600;
+}
+
+.scan-summary-item.scan-updated {
+  background: var(--info-dim);
+  color: var(--info);
+  font-weight: 600;
+}
+
+.scan-detail-table-wrapper {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.scan-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.scan-detail-table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-elevated);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.scan-detail-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.scan-detail-table tr:last-child td {
+  border-bottom: none;
+}
+
+.scan-skill-name {
+  font-weight: 500;
+  color: var(--text);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-tool-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.scan-scope {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--teal);
+}
+
+.scan-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.scan-status-new {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.scan-status-updated {
+  background: var(--info-dim);
+  color: var(--info);
+}
+
 /* ==================== Scrollbar ==================== */
 
 ::-webkit-scrollbar {

@@ -12,7 +12,7 @@ mod sync;
 use db::Database;
 use discovery::ToolTemplate;
 use models::{
-    Project, ScanResult, SkillUpdate, SkillView, SyncLog, SyncResult, Tool,
+    Project, ScanDetail, ScanResult, SkillUpdate, SkillView, SyncLog, SyncResult, Tool,
 };
 use settings::Settings;
 use std::path::PathBuf;
@@ -34,6 +34,19 @@ fn scan_tool_paths(
     let mut all_errors = Vec::new();
     let mut skills_new = 0usize;
     let mut skills_updated = 0usize;
+    let mut details: Vec<ScanDetail> = Vec::new();
+
+    // Pre-build tool_id → tool_name map
+    let all_tools = db.list_tools().unwrap_or_default();
+    let tool_name_map: std::collections::HashMap<i64, String> =
+        all_tools.into_iter().map(|t| (t.id, t.name)).collect();
+
+    // Determine scope label
+    let scope = if project_id == 0 {
+        "Global".to_string()
+    } else {
+        db.get_project_name(project_id).unwrap_or_else(|_| format!("Project#{}", project_id))
+    };
 
     for (tool_id, global_path, _project_rel_path) in tool_paths {
         let expanded = match scanner::expand_path(global_path) {
@@ -63,6 +76,8 @@ fn scan_tool_paths(
     // upsert_skill handles dedup: source_path first (location identity),
     // then core_hash (content identity across directories).
     for (tool_id, skill) in &all_skills {
+        let tname = tool_name_map.get(tool_id).cloned().unwrap_or_else(|| format!("Tool#{}", tool_id));
+
         let skill_id = match db.upsert_skill(
             &skill.name,
             skill.description.as_deref(),
@@ -71,11 +86,20 @@ fn scan_tool_paths(
             &skill.core_hash,
         ) {
             Ok((id, is_new)) => {
-                if is_new {
+                let status = if is_new {
                     skills_new += 1;
+                    "new"
                 } else {
                     skills_updated += 1;
-                }
+                    "updated"
+                };
+                details.push(ScanDetail {
+                    skill_name: skill.name.clone(),
+                    tool_name: tname.clone(),
+                    scope: scope.clone(),
+                    status: status.to_string(),
+                    source_path: skill.source_path.clone(),
+                });
                 id
             }
             Err(e) => {
@@ -110,6 +134,7 @@ fn scan_tool_paths(
         skills_new,
         skills_updated,
         errors: all_errors,
+        details,
     })
 }
 

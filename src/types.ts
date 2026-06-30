@@ -43,11 +43,20 @@ export interface SkillView {
   has_update: boolean;
 }
 
+export interface ScanDetail {
+  skill_name: string;
+  tool_name: string;
+  scope: string;
+  status: string;
+  source_path: string;
+}
+
 export interface ScanResult {
   skills_found: number;
   skills_new: number;
   skills_updated: number;
   errors: string[];
+  details: ScanDetail[];
 }
 
 export interface SyncResult {

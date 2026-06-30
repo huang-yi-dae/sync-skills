@@ -41,6 +41,7 @@ function App() {
   const [discoveredTools, setDiscoveredTools] = useState<ToolTemplate[]>([]);
   const [templates, setTemplates] = useState<ToolTemplate[]>([]);
   const [addingDiscovered, setAddingDiscovered] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   // Project editing
   const [showAddProject, setShowAddProject] = useState(false);
@@ -213,7 +214,12 @@ function App() {
       if (result.skills_new > 0) parts.push(`${result.skills_new} new`);
       if (result.skills_updated > 0) parts.push(`${result.skills_updated} updated`);
 
-      addToast("success", `Scan complete: ${parts.join(", ") || "no skills found"}`);
+      // Show modal if there are new or updated skills
+      if (result.details.length > 0) {
+        setScanResult(result);
+      } else {
+        addToast("success", `Scan complete: ${parts.join(", ") || "no skills found"}`);
+      }
 
       if (result.errors.length > 0) {
         result.errors.forEach((err) => addToast("error", err));
@@ -911,6 +917,59 @@ function App() {
           </div>
         )}
       </section>
+
+      {/* Scan Result Modal */}
+      {scanResult && (
+        <div className="modal-overlay" onClick={() => setScanResult(null)}>
+          <div className="modal scan-result-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Scan Results</h3>
+            <div className="scan-summary">
+              <span className="scan-summary-item">
+                Found <strong>{scanResult.skills_found}</strong>
+              </span>
+              {scanResult.skills_new > 0 && (
+                <span className="scan-summary-item scan-new">
+                  {scanResult.skills_new} new
+                </span>
+              )}
+              {scanResult.skills_updated > 0 && (
+                <span className="scan-summary-item scan-updated">
+                  {scanResult.skills_updated} updated
+                </span>
+              )}
+            </div>
+            <div className="scan-detail-table-wrapper">
+              <table className="scan-detail-table">
+                <thead>
+                  <tr>
+                    <th>Skill</th>
+                    <th>Tool</th>
+                    <th>Scope</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scanResult.details.map((d, i) => (
+                    <tr key={i}>
+                      <td className="scan-skill-name" title={d.source_path}>{d.skill_name}</td>
+                      <td className="scan-tool-name">{d.tool_name}</td>
+                      <td className="scan-scope">{d.scope}</td>
+                      <td>
+                        <span className={`scan-status scan-status-${d.status}`}>
+                          {d.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={() => setScanResult(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

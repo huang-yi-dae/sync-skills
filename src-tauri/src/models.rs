@@ -90,6 +90,16 @@ pub struct SyncLog {
     pub created_at: String,
 }
 
+/// Detail of a single skill found during scan
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanDetail {
+    pub skill_name: String,
+    pub tool_name: String,
+    pub scope: String,       // "Global" or project name
+    pub status: String,      // "new" or "updated"
+    pub source_path: String,
+}
+
 /// Result of a scan operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
@@ -97,6 +107,7 @@ pub struct ScanResult {
     pub skills_new: usize,
     pub skills_updated: usize,
     pub errors: Vec<String>,
+    pub details: Vec<ScanDetail>,
 }
 
 /// A discovered skill during scanning (before DB insert)
