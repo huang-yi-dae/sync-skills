@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 mod db;
+mod diff;
 mod discovery;
 mod hash;
 mod models;
@@ -10,6 +11,7 @@ mod settings;
 mod sync;
 
 use db::Database;
+use diff::SkillDiff;
 use discovery::ToolTemplate;
 use models::{
     Project, ScanDetail, ScanResult, SkillUpdate, SkillView, SyncLog, SyncResult, Tool,
@@ -484,6 +486,24 @@ async fn check_updates(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+#[tauri::command]
+async fn get_skill_diff(
+    db: State<'_, DbState>,
+    skill_id: i64,
+) -> Result<SkillDiff, String> {
+    let db = db.inner().clone();
+
+    tokio::task::spawn_blocking(move || -> Result<SkillDiff, String> {
+        let skill = db.get_skill_by_id(skill_id)?;
+        let source = PathBuf::from(&skill.source_path);
+        let ssot = sync::ssot_path(&skill.name)?;
+
+        diff::compute_skill_diff(&source, &ssot, &skill.name)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 // ==================== Settings Commands (M2) ====================
 
 #[tauri::command]
@@ -562,6 +582,7 @@ pub fn run() {
             sync_skill,
             sync_all_pending,
             check_updates,
+            get_skill_diff,
             // Settings (M2)
             get_settings,
             update_settings,

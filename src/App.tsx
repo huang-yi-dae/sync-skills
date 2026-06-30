@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import type {
   Tool, ToolTemplate, Project, SkillView, ScanResult, SyncResult,
-  SkillUpdate, SyncLog, Settings, Toast, InstallationInfo,
+  SkillUpdate, SkillDiff, SyncLog, Settings, Toast, InstallationInfo,
 } from "./types";
 
 type Tab = "global" | "projects";
@@ -28,6 +28,8 @@ function App() {
   const [updates, setUpdates] = useState<SkillUpdate[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "updated_at" | "created_at">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedProject, setSelectedProject] = useState<number>(0);
 
   // Tool editing
@@ -42,6 +44,9 @@ function App() {
   const [templates, setTemplates] = useState<ToolTemplate[]>([]);
   const [addingDiscovered, setAddingDiscovered] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [showUpdatesModal, setShowUpdatesModal] = useState(false);
+  const [selectedUpdateDiff, setSelectedUpdateDiff] = useState<{ update: SkillUpdate; diff: SkillDiff } | null>(null);
+  const [loadingDiff, setLoadingDiff] = useState<number | null>(null);
 
   // Project editing
   const [showAddProject, setShowAddProject] = useState(false);
@@ -242,13 +247,45 @@ function App() {
       const result = await invoke<SkillUpdate[]>("check_updates");
       setUpdates(result);
       if (result.length > 0) {
-        addToast("info", `${result.length} skill(s) have updates available`);
+        setShowUpdatesModal(true);
+      } else {
+        addToast("info", "All skills are up to date");
       }
     } catch (e) {
       addToast("error", `Check updates failed: ${e}`);
     } finally {
       setCheckingUpdates(false);
     }
+  }
+
+  async function handleViewDiff(update: SkillUpdate) {
+    setLoadingDiff(update.skill_id);
+    try {
+      const diff = await invoke<SkillDiff>("get_skill_diff", { skillId: update.skill_id });
+      setSelectedUpdateDiff({ update, diff });
+    } catch (e) {
+      addToast("error", `Failed to load diff: ${e}`);
+    } finally {
+      setLoadingDiff(null);
+    }
+  }
+
+  async function handleUpdateFromDiff(skillId: number) {
+    try {
+      await invoke("sync_skill", { skillId, projectId: null });
+      addToast("success", "Skill updated to SSOT");
+      setSelectedUpdateDiff(null);
+      // Remove from updates list
+      setUpdates((prev) => prev.filter((u) => u.skill_id !== skillId));
+      await loadSkills();
+    } catch (e) {
+      addToast("error", `Sync failed: ${e}`);
+    }
+  }
+
+  function handleSkipUpdate(skillId: number) {
+    setSelectedUpdateDiff(null);
+    setUpdates((prev) => prev.filter((u) => u.skill_id !== skillId));
   }
 
   async function handleToggle(skillId: number, toolId: number, active: boolean) {
@@ -474,13 +511,27 @@ function App() {
     return updates.some((u) => u.skill_id === skill.id);
   }
 
-  const filteredSkills = searchQuery
-    ? skills.filter(
-        (s) =>
-          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase())),
-      )
-    : skills;
+  const filteredSkills = (() => {
+    const filtered = searchQuery
+      ? skills.filter(
+          (s) =>
+            s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase())),
+        )
+      : [...skills];
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "name") {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortBy === "updated_at") {
+        cmp = a.updated_at.localeCompare(b.updated_at);
+      } else {
+        cmp = a.created_at.localeCompare(b.created_at);
+      }
+      return sortDir === "desc" ? -cmp : cmp;
+    });
+    return filtered;
+  })();
 
   // ==================== Panels ====================
 
@@ -836,6 +887,22 @@ function App() {
               className="search-input"
             />
           </div>
+          <select
+            className="sort-select"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          >
+            <option value="name">Name</option>
+            <option value="updated_at">Updated</option>
+            <option value="created_at">Created</option>
+          </select>
+          <button
+            className="btn btn-small sort-dir-btn"
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            title={sortDir === "asc" ? "Ascending" : "Descending"}
+          >
+            {sortDir === "asc" ? "A\u2192Z" : "Z\u2192A"}
+          </button>
         </div>
       </section>
 
@@ -967,6 +1034,110 @@ function App() {
             <div className="modal-actions">
               <button className="btn btn-primary" onClick={() => setScanResult(null)}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Updates Modal */}
+      {showUpdatesModal && (
+        <div className="modal-overlay" onClick={() => { setShowUpdatesModal(false); setSelectedUpdateDiff(null); }}>
+          <div className="modal updates-modal" onClick={(e) => e.stopPropagation()}>
+            {selectedUpdateDiff ? (
+              <>
+                <div className="diff-header">
+                  <button className="btn btn-small" onClick={() => setSelectedUpdateDiff(null)}>&larr; Back</button>
+                  <h3 className="diff-title">{selectedUpdateDiff.update.skill_name}</h3>
+                </div>
+                <div className="diff-meta">
+                  <span className="diff-path" title={selectedUpdateDiff.diff.source_path}>
+                    source: {selectedUpdateDiff.diff.source_path}
+                  </span>
+                  <span className="diff-path" title={selectedUpdateDiff.diff.ssot_path}>
+                    ssot: {selectedUpdateDiff.diff.ssot_path}
+                  </span>
+                </div>
+                <div className="diff-files">
+                  {selectedUpdateDiff.diff.files.map((file, fi) => (
+                    <div key={fi} className="diff-file">
+                      <div className={`diff-file-header diff-file-${file.change}`}>
+                        <span className="diff-change-badge">{file.change}</span>
+                        <span className="diff-file-path">{file.path}</span>
+                      </div>
+                      {file.hunks.map((hunk, hi) => (
+                        <div key={hi} className="diff-hunk">
+                          <div className="diff-hunk-header">
+                            @@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count} @@
+                          </div>
+                          <pre className="diff-lines">
+                            {hunk.lines.map((line, li) => (
+                              <div key={li} className={`diff-line diff-line-${line.op === "+" ? "add" : line.op === "-" ? "del" : "ctx"}`}>
+                                <span className="diff-line-op">{line.op === " " ? "\u00a0" : line.op}</span>
+                                <span className="diff-line-content">{line.content}</span>
+                              </div>
+                            ))}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {!selectedUpdateDiff.diff.has_changes && (
+                    <div className="diff-no-changes">No file-level differences detected (hash may differ due to metadata).</div>
+                  )}
+                </div>
+                <div className="modal-actions">
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleUpdateFromDiff(selectedUpdateDiff.update.skill_id)}
+                  >
+                    Update to SSOT
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleSkipUpdate(selectedUpdateDiff.update.skill_id)}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>Updates Available ({updates.length})</h3>
+                <div className="updates-list">
+                  {updates.map((u) => (
+                    <div key={u.skill_id} className="update-item">
+                      <div className="update-item-info">
+                        <span className="update-skill-name">{u.skill_name}</span>
+                        <code className="update-path" title={u.source_path}>{u.source_path}</code>
+                      </div>
+                      <div className="update-item-actions">
+                        <button
+                          className="btn btn-small"
+                          onClick={() => handleViewDiff(u)}
+                          disabled={loadingDiff === u.skill_id}
+                        >
+                          {loadingDiff === u.skill_id ? "Loading..." : "View Diff"}
+                        </button>
+                        <button
+                          className="btn btn-small btn-primary"
+                          onClick={() => handleUpdateFromDiff(u.skill_id)}
+                        >
+                          Update
+                        </button>
+                        <button
+                          className="btn btn-small"
+                          onClick={() => handleSkipUpdate(u.skill_id)}
+                        >
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" onClick={() => setShowUpdatesModal(false)}>Close</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

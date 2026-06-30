@@ -93,6 +93,33 @@ export interface Settings {
   prefer_symlink: boolean;
 }
 
+export interface DiffLine {
+  op: string;
+  content: string;
+}
+
+export interface DiffHunk {
+  old_start: number;
+  old_count: number;
+  new_start: number;
+  new_count: number;
+  lines: DiffLine[];
+}
+
+export interface FileDiff {
+  path: string;
+  change: "added" | "deleted" | "modified";
+  hunks: DiffHunk[];
+}
+
+export interface SkillDiff {
+  skill_name: string;
+  source_path: string;
+  ssot_path: string;
+  files: FileDiff[];
+  has_changes: boolean;
+}
+
 export interface Toast {
   type: "success" | "error" | "info";
   message: string;

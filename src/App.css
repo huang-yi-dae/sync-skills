@@ -535,6 +535,30 @@ body::before {
   color: var(--text-muted);
 }
 
+.sort-select {
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.sort-dir-btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 42px;
+  letter-spacing: -0.02em;
+}
+
 /* ==================== Skill Grid ==================== */
 
 .skill-grid {
@@ -1113,6 +1137,204 @@ body::before {
 .scan-status-updated {
   background: var(--info-dim);
   color: var(--info);
+}
+
+/* ==================== Updates Modal ==================== */
+
+.updates-modal {
+  min-width: 600px;
+  max-width: 780px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.updates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+
+.update-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.update-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-skill-name {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.update-path {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ==================== Diff View ==================== */
+
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.diff-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.diff-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.diff-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-files {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 48vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.diff-file {
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-file:last-child {
+  border-bottom: none;
+}
+
+.diff-file-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.diff-file-modified { border-left: 3px solid var(--info); }
+.diff-file-added { border-left: 3px solid var(--success); }
+.diff-file-deleted { border-left: 3px solid var(--error); }
+
+.diff-change-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diff-file-modified .diff-change-badge { background: var(--info-dim); color: var(--info); }
+.diff-file-added .diff-change-badge { background: var(--success-dim); color: var(--success); }
+.diff-file-deleted .diff-change-badge { background: var(--error-dim); color: var(--error); }
+
+.diff-file-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.diff-hunk-header {
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-lines {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.diff-line {
+  display: flex;
+  padding: 0 12px;
+}
+
+.diff-line-add {
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.diff-line-del {
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.diff-line-ctx {
+  color: var(--text-muted);
+}
+
+.diff-line-op {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  user-select: none;
+  font-weight: 700;
+}
+
+.diff-line-add .diff-line-op { color: var(--success); }
+.diff-line-del .diff-line-op { color: var(--error); }
+
+.diff-line-content {
+  flex: 1;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.diff-no-changes {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 /* ==================== Scrollbar ==================== */
