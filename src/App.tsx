@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import type {
-  Tool, Project, SkillView, ScanResult, SyncResult,
+  Tool, ToolTemplate, Project, SkillView, ScanResult, SyncResult,
   SkillUpdate, SyncLog, Settings, Toast, InstallationInfo,
 } from "./types";
 
@@ -38,6 +38,9 @@ function App() {
   const [newToolName, setNewToolName] = useState("");
   const [newToolGlobal, setNewToolGlobal] = useState("");
   const [newToolRel, setNewToolRel] = useState("");
+  const [discoveredTools, setDiscoveredTools] = useState<ToolTemplate[]>([]);
+  const [templates, setTemplates] = useState<ToolTemplate[]>([]);
+  const [addingDiscovered, setAddingDiscovered] = useState(false);
 
   // Project editing
   const [showAddProject, setShowAddProject] = useState(false);
@@ -53,6 +56,8 @@ function App() {
     loadSkills();
     loadProjects();
     loadSettings();
+    loadDiscovery();
+    loadTemplates();
   }, []);
 
   // Sync selectedProject when tab changes
@@ -125,6 +130,63 @@ function App() {
       setSyncLogs(await invoke<SyncLog[]>("get_sync_logs", { skillId: null, limit: 50 }));
     } catch (e) {
       addToast("error", `Failed to load sync logs: ${e}`);
+    }
+  }
+
+  async function loadDiscovery() {
+    try {
+      const found = await invoke<ToolTemplate[]>("discover_tools");
+      setDiscoveredTools(found);
+    } catch {
+      // Silent fail — discovery is a nice-to-have
+    }
+  }
+
+  async function loadTemplates() {
+    try {
+      setTemplates(await invoke<ToolTemplate[]>("list_tool_templates"));
+    } catch {
+      // Silent fail
+    }
+  }
+
+  async function handleAddDiscoveredAll() {
+    if (discoveredTools.length === 0) return;
+    setAddingDiscovered(true);
+    let added = 0;
+    for (const t of discoveredTools) {
+      try {
+        await invoke("add_tool", {
+          name: t.name,
+          globalPath: t.global_path,
+          projectRelPath: t.project_rel_path,
+        });
+        added++;
+      } catch {
+        // Skip duplicates silently
+      }
+    }
+    setDiscoveredTools([]);
+    setAddingDiscovered(false);
+    await loadTools();
+    if (added > 0) {
+      addToast("success", `Added ${added} tool${added > 1 ? "s" : ""}`);
+    }
+  }
+
+  function handleSelectTemplate(e: React.ChangeEvent<HTMLSelectElement>) {
+    const idx = parseInt(e.target.value, 10);
+    if (isNaN(idx) || idx < 0) {
+      setNewToolName("");
+      setNewToolGlobal("");
+      setNewToolRel("");
+      return;
+    }
+    const t = templates[idx];
+    if (t) {
+      setNewToolName(t.name);
+      setNewToolGlobal(t.global_path);
+      setNewToolRel(t.project_rel_path);
     }
   }
 
@@ -661,8 +723,44 @@ function App() {
           </button>
         </div>
 
+        {discoveredTools.length > 0 && (
+          <div className="discovery-banner">
+            <span className="discovery-text">
+              Found {discoveredTools.length} unregistered tool{discoveredTools.length > 1 ? "s" : ""}:{" "}
+              {discoveredTools.map((t) => t.name).join(", ")}
+            </span>
+            <button
+              className="btn btn-primary btn-small"
+              onClick={handleAddDiscoveredAll}
+              disabled={addingDiscovered}
+            >
+              {addingDiscovered ? "Adding..." : "Add All"}
+            </button>
+            <button
+              className="btn btn-small"
+              onClick={() => setDiscoveredTools([])}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {showAddTool && (
           <div className="add-tool-form">
+            {templates.length > 0 && (
+              <div className="form-row">
+                <select
+                  className="template-select"
+                  defaultValue=""
+                  onChange={handleSelectTemplate}
+                >
+                  <option value="" disabled>Choose a template...</option>
+                  {templates.map((t, i) => (
+                    <option key={t.name} value={i}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="form-row">
               <input type="text" value={newToolName} onChange={(e) => setNewToolName(e.target.value)}
                 className="edit-input" placeholder="Tool name" />

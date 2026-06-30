@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 mod db;
+mod discovery;
 mod hash;
 mod models;
 mod scanner;
@@ -9,6 +10,7 @@ mod settings;
 mod sync;
 
 use db::Database;
+use discovery::ToolTemplate;
 use models::{
     Project, ScanResult, SkillUpdate, SkillView, SyncLog, SyncResult, Tool,
 };
@@ -276,6 +278,16 @@ fn delete_tool(db: State<DbState>, tool_id: i64, tool_name: Option<String>) -> R
     Ok(())
 }
 
+#[tauri::command]
+fn list_tool_templates() -> Vec<ToolTemplate> {
+    discovery::get_all_templates()
+}
+
+#[tauri::command]
+fn discover_tools(db: State<DbState>) -> Result<Vec<ToolTemplate>, String> {
+    discovery::discover_tools(&db)
+}
+
 // ==================== Skill Commands ====================
 
 #[tauri::command]
@@ -513,6 +525,8 @@ pub fn run() {
             add_tool,
             update_tool_path,
             delete_tool,
+            list_tool_templates,
+            discover_tools,
             // Skills
             list_skills,
             // Scan

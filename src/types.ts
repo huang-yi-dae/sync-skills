@@ -10,6 +10,12 @@ export interface Tool {
   updated_at: string;
 }
 
+export interface ToolTemplate {
+  name: string;
+  global_path: string;
+  project_rel_path: string;
+}
+
 export interface Project {
   id: number;
   name: string;

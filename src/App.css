@@ -442,6 +442,47 @@ body::before {
 
 .form-row .edit-input { flex: 1; }
 
+/* ==================== Discovery Banner ==================== */
+
+.discovery-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 16px;
+  background: var(--accent-glow);
+  border: 1px solid rgba(232, 160, 69, 0.2);
+  border-radius: var(--radius-md);
+}
+
+.discovery-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ==================== Template Select ==================== */
+
+.template-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  transition: border-color 0.2s;
+  cursor: pointer;
+}
+
+.template-select:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 .form-group {
   margin-bottom: 14px;
 }
