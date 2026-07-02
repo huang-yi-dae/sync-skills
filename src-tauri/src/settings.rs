@@ -12,6 +12,10 @@ pub struct Settings {
     pub sync_mode: String,
     /// Whether to prefer symlinks over copies
     pub prefer_symlink: bool,
+    /// Theme: "light" (default), "dark", or "system"
+    pub theme: String,
+    /// Language: "zh" (default) or "en"
+    pub language: String,
 }
 
 impl Default for Settings {
@@ -19,6 +23,8 @@ impl Default for Settings {
         Settings {
             sync_mode: "semi-auto".to_string(),
             prefer_symlink: false,
+            theme: "light".to_string(),
+            language: "zh".to_string(),
         }
     }
 }

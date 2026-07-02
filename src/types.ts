@@ -91,6 +91,8 @@ export interface SyncLog {
 export interface Settings {
   sync_mode: string;
   prefer_symlink: boolean;
+  theme: string;
+  language: string;
 }
 
 export interface DiffLine {

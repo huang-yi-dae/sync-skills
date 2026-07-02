@@ -9,6 +9,341 @@ import type {
   SkillUpdate, SkillDiff, SyncLog, Settings, Toast, InstallationInfo,
 } from "./types";
 
+type Lang = "zh" | "en";
+
+const translations: Record<Lang, Record<string, string>> = {
+  zh: {
+    // Nav
+    global: "全局",
+    projects: "项目",
+    logs: "日志",
+    settings: "设置",
+    back: "返回",
+
+    // Settings panel
+    settingsTitle: "设置",
+    appearance: "外观",
+    theme: "主题",
+    themeLight: "亮色",
+    themeDark: "暗色",
+    themeSystem: "跟随系统",
+    language: "语言",
+    langZh: "中文",
+    langEn: "英文",
+    syncMode: "同步模式",
+    syncModeSemi: "半自动（手动同步）",
+    syncModeFull: "全自动（检测到变更即同步）",
+    syncModeHint: "半自动：扫描检测变更后，由你点击同步。全自动：扫描触发立即同步。",
+    preferSymlink: "优先使用符号链接代替复制",
+    symlinkHint: "符号链接节省磁盘空间，但 Windows 需要开启开发者模式。失败时自动回退到复制。",
+    saveSettings: "保存设置",
+
+    // Logs panel
+    activityLogs: "活动日志",
+    refresh: "刷新",
+    noLogs: "暂无操作记录。",
+    time: "时间",
+    action: "操作",
+    skill: "Skill",
+    tool: "工具",
+    status: "状态",
+    detail: "详情",
+
+    // Log actions
+    actionScan: "扫描",
+    actionSync: "同步",
+    actionEnable: "启用",
+    actionDisable: "禁用",
+    actionAddTool: "添加工具",
+    actionDeleteTool: "删除工具",
+    actionAddProject: "添加项目",
+    actionDeleteProject: "删除项目",
+
+    // Tool paths
+    toolPaths: "工具路径",
+    addTool: "+ 添加工具",
+    cancel: "取消",
+    templatePlaceholder: "选择模板...",
+    toolNamePlaceholder: "工具名称",
+    globalPathPlaceholder: "全局路径（如 ~/.mytool/skills/）",
+    relPathPlaceholder: "项目相对路径（如 .mytool/skills/）",
+    add: "添加",
+    edit: "编辑",
+    save: "保存",
+    globalPath: "全局路径：",
+    projectPath: "项目路径：",
+
+    // Discovery
+    deleteProject: "删除项目",
+    addAll: "全部添加",
+    adding: "添加中...",
+    dismiss: "忽略",
+
+    // Actions
+    scanAll: "全部扫描",
+    scanning: "扫描中...",
+    checkUpdates: "检查更新",
+    checking: "检查中...",
+    syncAllActive: "同步所有激活",
+    searchPlaceholder: "搜索 Skill...",
+    sortName: "名称",
+    sortUpdated: "更新时间",
+    sortCreated: "创建时间",
+    ascending: "升序",
+    descending: "降序",
+
+    // Skills section
+    skills: "Skills",
+    updates: "更新",
+    noSkillsYet: "尚未发现任何 Skill。",
+    configureAndScan: '在上方配置工具路径后点击"全部扫描"来发现 Skill。',
+    noMatch: '未找到匹配的 Skill',
+    updateAvailable: "有可用更新",
+    synced: "已同步",
+    syncNow: "立即同步",
+    syncingCard: "同步中...",
+
+    // Project nav
+    noProjects: "暂无项目，添加一个开始使用。",
+    addProjectBtn: "+ 项目",
+
+    // Modals
+    addProjectTitle: "添加项目",
+    nameLabel: "名称：",
+    pathLabel: "绝对路径：",
+    projectNamePlaceholder: "我的项目",
+    projectPathPlaceholder: "D:\\my-project",
+
+    // Scan result
+    scanResults: "扫描结果",
+    found: "发现",
+    new: "新增",
+    updated: "已更新",
+    scope: "范围",
+    close: "关闭",
+
+    // Updates modal
+    updatesAvailable: "有可用更新",
+    viewDiff: "查看差异",
+    loading: "加载中...",
+    update: "更新",
+    skip: "跳过",
+    updateToSsot: "更新到 SSOT",
+    noChanges: "文件已同步，无实际差异。",
+
+    // Toast messages
+    failedLoadTools: "加载工具失败",
+    failedLoadSkills: "加载 Skill 失败",
+    failedLoadProjects: "加载项目失败",
+    failedLoadSettings: "加载设置失败",
+    failedLoadLogs: "加载日志失败",
+    settingsSaved: "设置已保存",
+    failedSaveSettings: "保存设置失败",
+    scanComplete: "扫描完成",
+    noSkillsFound: "未发现 Skill",
+    scanFailed: "扫描失败",
+    allUpToDate: "所有 Skill 已是最新",
+    checkUpdatesFailed: "检查更新失败",
+    failedLoadDiff: "加载差异失败",
+    skillUpdated: "Skill 已更新到 SSOT",
+    syncFailed: "同步失败",
+    toggleFailed: "切换失败",
+    syncedToTools: "已同步到",
+    tools: "个工具",
+    syncComplete: "同步完成",
+    syncedCount: "已同步",
+    errors: "错误",
+    syncAllFailed: "同步全部失败",
+    globalPathNotEmpty: "全局路径不能为空",
+    globalPathMustBeAbsolute: "全局路径必须是绝对路径（以 /、~/、盘符或 \\\\ 开头）",
+    pathUpdated: "路径已更新",
+    failedUpdate: "更新失败",
+    nameAndPathRequired: "名称和路径为必填",
+    relPathNoRelative: "项目相对路径不能以 ./ 或 ../ 开头",
+    toolAdded: "已添加工具",
+    failedAddTool: "添加工具失败",
+    confirmDeleteTool: "删除工具",
+    confirmDeleteToolMsg: "这将移除所有相关安装和同步日志。",
+    toolDeleted: "已删除工具",
+    failedDeleteTool: "删除工具失败",
+    nameAndPathRequiredProject: "名称和路径为必填",
+    enterAbsolutePath: "请输入绝对路径",
+    projectAdded: "已添加项目",
+    failedAddProject: "添加项目失败",
+    confirmDeleteProject: "删除项目",
+    confirmDeleteProjectMsg: "所有相关数据将被移除。",
+    projectDeleted: "已删除项目",
+    failedDeleteProject: "删除项目失败",
+    addedTools: "已添加",
+    toolUnit: "个工具",
+  },
+  en: {
+    // Nav
+    global: "Global",
+    projects: "Projects",
+    logs: "Logs",
+    settings: "Settings",
+    back: "Back",
+
+    // Settings panel
+    settingsTitle: "Settings",
+    appearance: "Appearance",
+    theme: "Theme",
+    themeLight: "Light",
+    themeDark: "Dark",
+    themeSystem: "System",
+    language: "Language",
+    langZh: "Chinese",
+    langEn: "English",
+    syncMode: "Sync Mode",
+    syncModeSemi: "Semi-Auto (manual sync)",
+    syncModeFull: "Full-Auto (sync on change)",
+    syncModeHint: "Semi-auto: scan detects changes, you click sync. Full-auto: scan triggers immediate sync.",
+    preferSymlink: "Prefer symlinks over copies",
+    symlinkHint: "Symlinks save disk space but require developer mode on Windows. Falls back to copy on failure.",
+    saveSettings: "Save Settings",
+
+    // Logs panel
+    activityLogs: "Activity Logs",
+    refresh: "Refresh",
+    noLogs: "No operations recorded yet.",
+    time: "Time",
+    action: "Action",
+    skill: "Skill",
+    tool: "Tool",
+    status: "Status",
+    detail: "Detail",
+
+    // Log actions
+    actionScan: "Scan",
+    actionSync: "Sync",
+    actionEnable: "Enable",
+    actionDisable: "Disable",
+    actionAddTool: "Add Tool",
+    actionDeleteTool: "Delete Tool",
+    actionAddProject: "Add Project",
+    actionDeleteProject: "Delete Project",
+
+    // Tool paths
+    toolPaths: "Tool Paths",
+    addTool: "+ Add Tool",
+    cancel: "Cancel",
+    templatePlaceholder: "Choose a template...",
+    toolNamePlaceholder: "Tool name",
+    globalPathPlaceholder: "Global path (e.g. ~/.mytool/skills/)",
+    relPathPlaceholder: "Project rel path (e.g. .mytool/skills/)",
+    add: "Add",
+    edit: "Edit",
+    save: "Save",
+    globalPath: "Global path:",
+    projectPath: "Project path:",
+
+    // Discovery
+    deleteProject: "Delete project",
+    addAll: "Add All",
+    adding: "Adding...",
+    dismiss: "Dismiss",
+
+    // Actions
+    scanAll: "Scan All",
+    scanning: "Scanning...",
+    checkUpdates: "Check Updates",
+    checking: "Checking...",
+    syncAllActive: "Sync All Active",
+    searchPlaceholder: "Search skills...",
+    sortName: "Name",
+    sortUpdated: "Updated",
+    sortCreated: "Created",
+    ascending: "Ascending",
+    descending: "Descending",
+
+    // Skills section
+    skills: "Skills",
+    updates: "updates",
+    noSkillsYet: "No skills discovered yet.",
+    configureAndScan: 'Configure tool paths above and click "Scan All" to discover skills.',
+    noMatch: "No matching skills found for",
+    updateAvailable: "Update available",
+    synced: "synced",
+    syncNow: "Sync Now",
+    syncingCard: "Syncing...",
+
+    // Project nav
+    noProjects: "No projects yet. Add one to get started.",
+    addProjectBtn: "+ Project",
+
+    // Modals
+    addProjectTitle: "Add Project",
+    nameLabel: "Name:",
+    pathLabel: "Absolute path:",
+    projectNamePlaceholder: "My Project",
+    projectPathPlaceholder: "D:\\my-project",
+
+    // Scan result
+    scanResults: "Scan Results",
+    found: "Found",
+    new: "new",
+    updated: "updated",
+    scope: "Scope",
+    close: "Close",
+
+    // Updates modal
+    updatesAvailable: "Updates Available",
+    viewDiff: "View Diff",
+    loading: "Loading...",
+    update: "Update",
+    skip: "Skip",
+    updateToSsot: "Update to SSOT",
+    noChanges: "Files are in sync, no actual differences.",
+
+    // Toast messages
+    failedLoadTools: "Failed to load tools",
+    failedLoadSkills: "Failed to load skills",
+    failedLoadProjects: "Failed to load projects",
+    failedLoadSettings: "Failed to load settings",
+    failedLoadLogs: "Failed to load sync logs",
+    settingsSaved: "Settings saved",
+    failedSaveSettings: "Failed to save settings",
+    scanComplete: "Scan complete",
+    noSkillsFound: "no skills found",
+    scanFailed: "Scan failed",
+    allUpToDate: "All skills are up to date",
+    checkUpdatesFailed: "Check updates failed",
+    failedLoadDiff: "Failed to load diff",
+    skillUpdated: "Skill updated to SSOT",
+    syncFailed: "Sync failed",
+    toggleFailed: "Toggle failed",
+    syncedToTools: "Synced",
+    tools: "tool(s)",
+    syncComplete: "Sync complete",
+    syncedCount: "synced",
+    errors: "errors",
+    syncAllFailed: "Sync all failed",
+    globalPathNotEmpty: "Global path cannot be empty",
+    globalPathMustBeAbsolute: "Global path must be absolute (start with /, ~/, drive letter, or \\\\)",
+    pathUpdated: "Path updated",
+    failedUpdate: "Failed to update",
+    nameAndPathRequired: "Name and global path are required",
+    relPathNoRelative: "Project relative path must not start with ./ or ../",
+    toolAdded: "Tool added",
+    failedAddTool: "Failed to add tool",
+    confirmDeleteTool: "Delete tool",
+    confirmDeleteToolMsg: "This will remove all related installations and sync logs.",
+    toolDeleted: "Tool deleted",
+    failedDeleteTool: "Failed to delete tool",
+    nameAndPathRequiredProject: "Name and path are required",
+    enterAbsolutePath: "Please enter an absolute path",
+    projectAdded: "Project added",
+    failedAddProject: "Failed to add project",
+    confirmDeleteProject: "Delete project",
+    confirmDeleteProjectMsg: "All related data will be removed.",
+    projectDeleted: "Project deleted",
+    failedDeleteProject: "Failed to delete project",
+    addedTools: "Added",
+    toolUnit: "tool(s)",
+  },
+};
+
 type Tab = "global" | "projects";
 type Panel = "main" | "settings" | "logs";
 
@@ -17,7 +352,39 @@ function App() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [skills, setSkills] = useState<SkillView[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [settings, setSettings] = useState<Settings>({ sync_mode: "semi-auto", prefer_symlink: false });
+  const [settings, setSettings] = useState<Settings>({ sync_mode: "semi-auto", prefer_symlink: false, theme: "light", language: "zh" });
+
+  // Translation helper
+  const lang = settings.language as Lang;
+  const t = (key: string): string => {
+    return translations[lang]?.[key] || translations.en[key] || key;
+  };
+
+  // Apply theme to document
+  useEffect(() => {
+    const theme = settings.theme;
+    let resolvedTheme = theme;
+    if (theme === "system") {
+      resolvedTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      const mql = window.matchMedia("(prefers-color-scheme: dark)");
+      const handler = (e: MediaQueryListEvent) => {
+        document.documentElement.setAttribute("data-theme", e.matches ? "dark" : "light");
+        document.body.style.background = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+      };
+      mql.addEventListener("change", handler);
+      return () => mql.removeEventListener("change", handler);
+    }
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+    document.body.style.background = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  }, [settings.theme]);
+
+  // Auto-save theme and language changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      invoke("update_settings", { newSettings: settings }).catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [settings.theme, settings.language]);
 
   // UI state
   const [activeTab, setActiveTab] = useState<Tab>("global");
@@ -102,7 +469,7 @@ function App() {
     try {
       setTools(await invoke<Tool[]>("list_tools"));
     } catch (e) {
-      addToast("error", `Failed to load tools: ${e}`);
+      addToast("error", `${t("failedLoadTools")}: ${e}`);
     }
   }
 
@@ -110,7 +477,7 @@ function App() {
     try {
       setSkills(await invoke<SkillView[]>("list_skills", { projectId: selectedProject }));
     } catch (e) {
-      addToast("error", `Failed to load skills: ${e}`);
+      addToast("error", `${t("failedLoadSkills")}: ${e}`);
     }
   }
 
@@ -119,7 +486,7 @@ function App() {
       const result = await invoke<Project[]>("list_projects");
       setProjects(result.filter((p) => p.id !== 0)); // Exclude Global from project list
     } catch (e) {
-      addToast("error", `Failed to load projects: ${e}`);
+      addToast("error", `${t("failedLoadProjects")}: ${e}`);
     }
   }
 
@@ -127,7 +494,7 @@ function App() {
     try {
       setSettings(await invoke<Settings>("get_settings"));
     } catch (e) {
-      addToast("error", `Failed to load settings: ${e}`);
+      addToast("error", `${t("failedLoadSettings")}: ${e}`);
     }
   }
 
@@ -135,7 +502,7 @@ function App() {
     try {
       setSyncLogs(await invoke<SyncLog[]>("get_sync_logs", { skillId: null, limit: 50 }));
     } catch (e) {
-      addToast("error", `Failed to load sync logs: ${e}`);
+      addToast("error", `${t("failedLoadLogs")}: ${e}`);
     }
   }
 
@@ -176,7 +543,7 @@ function App() {
     setAddingDiscovered(false);
     await loadTools();
     if (added > 0) {
-      addToast("success", `Added ${added} tool${added > 1 ? "s" : ""}`);
+      addToast("success", `${t("addedTools")} ${added} ${t("toolUnit")}`);
     }
   }
 
@@ -215,15 +582,15 @@ function App() {
       await loadSkills();
 
       const parts: string[] = [];
-      if (result.skills_found > 0) parts.push(`found ${result.skills_found}`);
-      if (result.skills_new > 0) parts.push(`${result.skills_new} new`);
-      if (result.skills_updated > 0) parts.push(`${result.skills_updated} updated`);
+      if (result.skills_found > 0) parts.push(`${t("found")} ${result.skills_found}`);
+      if (result.skills_new > 0) parts.push(`${result.skills_new} ${t("new")}`);
+      if (result.skills_updated > 0) parts.push(`${result.skills_updated} ${t("updated")}`);
 
       // Show modal if there are new or updated skills
       if (result.details.length > 0) {
         setScanResult(result);
       } else {
-        addToast("success", `Scan complete: ${parts.join(", ") || "no skills found"}`);
+        addToast("success", `${t("scanComplete")}: ${parts.join(", ") || t("noSkillsFound")}`);
       }
 
       if (result.errors.length > 0) {
@@ -235,7 +602,7 @@ function App() {
         await handleCheckUpdates();
       }
     } catch (e) {
-      addToast("error", `Scan failed: ${e}`);
+      addToast("error", `${t("scanFailed")}: ${e}`);
     } finally {
       setScanning(false);
     }
@@ -249,10 +616,10 @@ function App() {
       if (result.length > 0) {
         setShowUpdatesModal(true);
       } else {
-        addToast("info", "All skills are up to date");
+        addToast("info", t("allUpToDate"));
       }
     } catch (e) {
-      addToast("error", `Check updates failed: ${e}`);
+      addToast("error", `${t("checkUpdatesFailed")}: ${e}`);
     } finally {
       setCheckingUpdates(false);
     }
@@ -264,7 +631,7 @@ function App() {
       const diff = await invoke<SkillDiff>("get_skill_diff", { skillId: update.skill_id });
       setSelectedUpdateDiff({ update, diff });
     } catch (e) {
-      addToast("error", `Failed to load diff: ${e}`);
+      addToast("error", `${t("failedLoadDiff")}: ${e}`);
     } finally {
       setLoadingDiff(null);
     }
@@ -273,13 +640,13 @@ function App() {
   async function handleUpdateFromDiff(skillId: number) {
     try {
       await invoke("sync_skill", { skillId, projectId: null });
-      addToast("success", "Skill updated to SSOT");
+      addToast("success", t("skillUpdated"));
       setSelectedUpdateDiff(null);
       // Remove from updates list
       setUpdates((prev) => prev.filter((u) => u.skill_id !== skillId));
       await loadSkills();
     } catch (e) {
-      addToast("error", `Sync failed: ${e}`);
+      addToast("error", `${t("syncFailed")}: ${e}`);
     }
   }
 
@@ -303,7 +670,7 @@ function App() {
         await handleSyncSkill(skillId);
       }
     } catch (e) {
-      addToast("error", `Toggle failed: ${e}`);
+      addToast("error", `${t("toggleFailed")}: ${e}`);
     }
   }
 
@@ -315,12 +682,12 @@ function App() {
       await handleCheckUpdates();
 
       if (result.errors.length > 0) {
-        addToast("error", `Sync ${result.skill_name}: ${result.errors.join(", ")}`);
+        addToast("error", `${result.skill_name}: ${result.errors.join(", ")}`);
       } else {
-        addToast("success", `Synced ${result.skill_name} to ${result.synced_to} tool(s)`);
+        addToast("success", `${t("syncedToTools")} ${result.skill_name} → ${result.synced_to} ${t("tools")}`);
       }
     } catch (e) {
-      addToast("error", `Sync failed: ${e}`);
+      addToast("error", `${t("syncFailed")}: ${e}`);
     } finally {
       setSyncing((prev) => {
         const next = new Set(prev);
@@ -342,10 +709,10 @@ function App() {
 
       addToast(
         totalErrors > 0 ? "error" : "success",
-        `Sync complete: ${totalSynced} synced, ${totalErrors} errors`,
+        `${t("syncComplete")}: ${totalSynced} ${t("syncedCount")}, ${totalErrors} ${t("errors")}`,
       );
     } catch (e) {
-      addToast("error", `Sync all failed: ${e}`);
+      addToast("error", `${t("syncAllFailed")}: ${e}`);
     } finally {
       setScanning(false);
     }
@@ -354,9 +721,9 @@ function App() {
   async function handleSaveSettings() {
     try {
       await invoke("update_settings", { newSettings: settings });
-      addToast("success", "Settings saved");
+      addToast("success", t("settingsSaved"));
     } catch (e) {
-      addToast("error", `Failed to save settings: ${e}`);
+      addToast("error", `${t("failedSaveSettings")}: ${e}`);
     }
   }
 
@@ -370,7 +737,7 @@ function App() {
 
   async function saveEdit(toolId: number) {
     if (!editGlobalPath.trim()) {
-      addToast("error", "Global path cannot be empty");
+      addToast("error", t("globalPathNotEmpty"));
       return;
     }
     const gPath = editGlobalPath.trim();
@@ -380,7 +747,7 @@ function App() {
       !/^[A-Za-z]:[\\/]/.test(gPath) &&
       !gPath.startsWith("\\\\")
     ) {
-      addToast("error", "Global path must be absolute (start with /, ~/, drive letter, or \\\\)");
+      addToast("error", t("globalPathMustBeAbsolute"));
       return;
     }
     try {
@@ -391,15 +758,15 @@ function App() {
       });
       setEditingTool(null);
       await loadTools();
-      addToast("success", "Path updated");
+      addToast("success", t("pathUpdated"));
     } catch (e) {
-      addToast("error", `Failed to update: ${e}`);
+      addToast("error", `${t("failedUpdate")}: ${e}`);
     }
   }
 
   async function handleAddTool() {
     if (!newToolName.trim() || !newToolGlobal.trim()) {
-      addToast("error", "Name and global path are required");
+      addToast("error", t("nameAndPathRequired"));
       return;
     }
     // Validate global path is absolute
@@ -410,13 +777,13 @@ function App() {
       !/^[A-Za-z]:[\\/]/.test(gPath) &&
       !gPath.startsWith("\\\\")
     ) {
-      addToast("error", "Global path must be absolute (start with /, ~/, drive letter, or \\\\)");
+      addToast("error", t("globalPathMustBeAbsolute"));
       return;
     }
     // Validate relative path doesn't start with .
     const rPath = newToolRel.trim();
     if (rPath.startsWith("./") || rPath.startsWith("../") || rPath === ".") {
-      addToast("error", "Project relative path must not start with ./ or ../");
+      addToast("error", t("relPathNoRelative"));
       return;
     }
     try {
@@ -430,23 +797,23 @@ function App() {
       setNewToolGlobal("");
       setNewToolRel("");
       await loadTools();
-      addToast("success", `Tool "${newToolName.trim()}" added`);
+      addToast("success", `${t("toolAdded")} "${newToolName.trim()}"`);
     } catch (e) {
-      addToast("error", `Failed to add tool: ${e}`);
+      addToast("error", `${t("failedAddTool")}: ${e}`);
     }
   }
 
   async function handleDeleteTool(toolId: number, toolName: string) {
-    if (!confirm(`Delete tool "${toolName}"? This will remove all related installations and sync logs.`)) return;
+    if (!confirm(`${t("confirmDeleteTool")} "${toolName}"?\n${t("confirmDeleteToolMsg")}`)) return;
     try {
       // Optimistic update: immediately remove tool from skills and tool list
       setSkills((prev) =>
         prev.map((s) => {
-          const filtered = s.installed_tools.filter((t) => t.tool_id !== toolId);
+          const filtered = s.installed_tools.filter((inst) => inst.tool_id !== toolId);
           return { ...s, installed_tools: filtered, install_count: filtered.length };
         })
       );
-      setTools((prev) => prev.filter((t) => t.id !== toolId));
+      setTools((prev) => prev.filter((tool) => tool.id !== toolId));
       if (editingTool === toolId) {
         setEditingTool(null);
       }
@@ -454,11 +821,11 @@ function App() {
       await invoke("delete_tool", { toolId, toolName });
       // Reload to get authoritative state from backend
       await Promise.all([loadTools(), loadSkills()]);
-      addToast("success", `Tool "${toolName}" deleted`);
+      addToast("success", `${t("toolDeleted")} "${toolName}"`);
     } catch (e) {
       // Rollback on failure: reload everything
       await Promise.all([loadTools(), loadSkills()]);
-      addToast("error", `Failed to delete tool: ${e}`);
+      addToast("error", `${t("failedDeleteTool")}: ${e}`);
     }
   }
 
@@ -466,11 +833,11 @@ function App() {
 
   async function handleAddProject() {
     if (!newProjectName.trim() || !newProjectPath.trim()) {
-      addToast("error", "Name and path are required");
+      addToast("error", t("nameAndPathRequiredProject"));
       return;
     }
     if (newProjectPath.startsWith("./") || newProjectPath.startsWith("../")) {
-      addToast("error", "Please enter an absolute path");
+      addToast("error", t("enterAbsolutePath"));
       return;
     }
     try {
@@ -479,14 +846,14 @@ function App() {
       setNewProjectName("");
       setNewProjectPath("");
       await loadProjects();
-      addToast("success", `Project "${newProjectName}" added`);
+      addToast("success", `${t("projectAdded")} "${newProjectName}"`);
     } catch (e) {
-      addToast("error", `Failed to add project: ${e}`);
+      addToast("error", `${t("failedAddProject")}: ${e}`);
     }
   }
 
   async function handleDeleteProject(projectId: number, projectName: string) {
-    if (!confirm(`Delete project "${projectName}"? All related data will be removed.`)) return;
+    if (!confirm(`${t("confirmDeleteProject")} "${projectName}"?\n${t("confirmDeleteProjectMsg")}`)) return;
     try {
       await invoke("delete_project", { projectId });
       if (selectedProject === projectId) {
@@ -495,16 +862,16 @@ function App() {
         setSelectedProject(remaining.length > 0 ? remaining[0].id : 0);
       }
       await loadProjects();
-      addToast("success", `Project "${projectName}" deleted`);
+      addToast("success", `${t("projectDeleted")} "${projectName}"`);
     } catch (e) {
-      addToast("error", `Failed to delete project: ${e}`);
+      addToast("error", `${t("failedDeleteProject")}: ${e}`);
     }
   }
 
   // ==================== Render Helpers ====================
 
   function getInstallStatus(skill: SkillView, toolId: number): InstallationInfo | undefined {
-    return skill.installed_tools.find((t) => t.tool_id === toolId);
+    return skill.installed_tools.find((inst) => inst.tool_id === toolId);
   }
 
   function hasUpdate(skill: SkillView): boolean {
@@ -539,24 +906,53 @@ function App() {
     return (
       <section className="section">
         <div className="panel-header">
-          <h2 className="section-title">Settings</h2>
+          <h2 className="section-title">{t("settingsTitle")}</h2>
           <button className="btn btn-secondary" onClick={() => setActivePanel("main")}>
-            Back
+            {t("back")}
           </button>
         </div>
 
         <div className="settings-group">
-          <label className="settings-label">Sync Mode</label>
+          <label className="settings-label">{t("appearance")}</label>
+          <div className="settings-row">
+            <div className="settings-field">
+              <span className="settings-field-label">{t("theme")}</span>
+              <select
+                className="settings-select"
+                value={settings.theme}
+                onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
+              >
+                <option value="light">{t("themeLight")}</option>
+                <option value="dark">{t("themeDark")}</option>
+                <option value="system">{t("themeSystem")}</option>
+              </select>
+            </div>
+            <div className="settings-field">
+              <span className="settings-field-label">{t("language")}</span>
+              <select
+                className="settings-select"
+                value={settings.language}
+                onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+              >
+                <option value="zh">{t("langZh")}</option>
+                <option value="en">{t("langEn")}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-group">
+          <label className="settings-label">{t("syncMode")}</label>
           <select
             className="settings-select"
             value={settings.sync_mode}
             onChange={(e) => setSettings({ ...settings, sync_mode: e.target.value })}
           >
-            <option value="semi-auto">Semi-Auto (manual sync)</option>
-            <option value="full-auto">Full-Auto (sync on change)</option>
+            <option value="semi-auto">{t("syncModeSemi")}</option>
+            <option value="full-auto">{t("syncModeFull")}</option>
           </select>
           <p className="settings-hint">
-            Semi-auto: scan detects changes, you click sync. Full-auto: scan triggers immediate sync.
+            {t("syncModeHint")}
           </p>
         </div>
 
@@ -567,15 +963,15 @@ function App() {
               checked={settings.prefer_symlink}
               onChange={(e) => setSettings({ ...settings, prefer_symlink: e.target.checked })}
             />
-            {" "}Prefer symlinks over copies
+            {" "}{t("preferSymlink")}
           </label>
           <p className="settings-hint">
-            Symlinks save disk space but require developer mode on Windows. Falls back to copy on failure.
+            {t("symlinkHint")}
           </p>
         </div>
 
         <button className="btn btn-primary" onClick={handleSaveSettings}>
-          Save Settings
+          {t("saveSettings")}
         </button>
       </section>
     );
@@ -583,41 +979,41 @@ function App() {
 
   function renderLogsPanel() {
     const actionLabels: Record<string, string> = {
-      scan: "Scan",
-      sync: "Sync",
-      toggle_on: "Enable",
-      toggle_off: "Disable",
-      add_tool: "Add Tool",
-      delete_tool: "Delete Tool",
-      add_project: "Add Project",
-      delete_project: "Delete Project",
+      scan: t("actionScan"),
+      sync: t("actionSync"),
+      toggle_on: t("actionEnable"),
+      toggle_off: t("actionDisable"),
+      add_tool: t("actionAddTool"),
+      delete_tool: t("actionDeleteTool"),
+      add_project: t("actionAddProject"),
+      delete_project: t("actionDeleteProject"),
     };
 
     return (
       <section className="section">
         <div className="panel-header">
-          <h2 className="section-title">Activity Logs</h2>
+          <h2 className="section-title">{t("activityLogs")}</h2>
           <div className="panel-actions">
-            <button className="btn btn-small" onClick={loadSyncLogs}>Refresh</button>
-            <button className="btn btn-secondary" onClick={() => setActivePanel("main")}>Back</button>
+            <button className="btn btn-small" onClick={loadSyncLogs}>{t("refresh")}</button>
+            <button className="btn btn-secondary" onClick={() => setActivePanel("main")}>{t("back")}</button>
           </div>
         </div>
 
         {syncLogs.length === 0 ? (
           <div className="empty-state">
-            <p>No operations recorded yet.</p>
+            <p>{t("noLogs")}</p>
           </div>
         ) : (
           <div className="log-table-wrapper">
             <table className="log-table">
               <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>Action</th>
-                  <th>Skill</th>
-                  <th>Tool</th>
-                  <th>Status</th>
-                  <th>Detail</th>
+                  <th>{t("time")}</th>
+                  <th>{t("action")}</th>
+                  <th>{t("skill")}</th>
+                  <th>{t("tool")}</th>
+                  <th>{t("status")}</th>
+                  <th>{t("detail")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -687,21 +1083,21 @@ function App() {
             className={`tab ${activeTab === "global" ? "tab-active" : ""}`}
             onClick={() => setActiveTab("global")}
           >
-            Global
+            {t("global")}
           </button>
           <button
             className={`tab ${activeTab === "projects" ? "tab-active" : ""}`}
             onClick={() => setActiveTab("projects")}
           >
-            Projects
+            {t("projects")}
           </button>
         </div>
         <div className="nav-actions">
           <button className="btn btn-small btn-ghost" onClick={() => { loadSyncLogs(); setActivePanel("logs"); }}>
-            Logs
+            {t("logs")}
           </button>
           <button className="btn btn-small btn-ghost" onClick={() => setActivePanel("settings")}>
-            Settings
+            {t("settings")}
           </button>
         </div>
       </nav>
@@ -710,7 +1106,7 @@ function App() {
       {activeTab === "projects" && (
         <div className="project-nav">
           {projects.length === 0 && (
-            <span className="project-empty-hint">No projects yet. Add one to get started.</span>
+            <span className="project-empty-hint">{t("noProjects")}</span>
           )}
           {projects.map((p) => (
             <div key={p.id} className="project-btn-group">
@@ -723,7 +1119,7 @@ function App() {
               <button
                 className="project-delete"
                 onClick={() => handleDeleteProject(p.id, p.name)}
-                title="Delete project"
+                title={t("deleteProject")}
               >
                 ×
               </button>
@@ -733,7 +1129,7 @@ function App() {
             className="btn btn-small btn-primary"
             onClick={() => setShowAddProject(true)}
           >
-            + Project
+            {t("addProjectBtn")}
           </button>
         </div>
       )}
@@ -742,30 +1138,30 @@ function App() {
       {showAddProject && (
         <div className="modal-overlay" onClick={() => setShowAddProject(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Add Project</h3>
+            <h3>{t("addProjectTitle")}</h3>
             <div className="form-group">
-              <label>Name:</label>
+              <label>{t("nameLabel")}</label>
               <input
                 type="text"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
                 className="edit-input"
-                placeholder="My Project"
+                placeholder={t("projectNamePlaceholder")}
               />
             </div>
             <div className="form-group">
-              <label>Absolute path:</label>
+              <label>{t("pathLabel")}</label>
               <input
                 type="text"
                 value={newProjectPath}
                 onChange={(e) => setNewProjectPath(e.target.value)}
                 className="edit-input"
-                placeholder="D:\my-project"
+                placeholder={t("projectPathPlaceholder")}
               />
             </div>
             <div className="modal-actions">
-              <button className="btn btn-primary" onClick={handleAddProject}>Add</button>
-              <button className="btn btn-secondary" onClick={() => setShowAddProject(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAddProject}>{t("add")}</button>
+              <button className="btn btn-secondary" onClick={() => setShowAddProject(false)}>{t("cancel")}</button>
             </div>
           </div>
         </div>
@@ -774,30 +1170,30 @@ function App() {
       {/* Tool configuration */}
       <section className="section">
         <div className="section-header">
-          <h2 className="section-title">Tool Paths</h2>
+          <h2 className="section-title">{t("toolPaths")}</h2>
           <button className="btn btn-small" onClick={() => setShowAddTool(!showAddTool)}>
-            {showAddTool ? "Cancel" : "+ Add Tool"}
+            {showAddTool ? t("cancel") : t("addTool")}
           </button>
         </div>
 
         {discoveredTools.length > 0 && (
           <div className="discovery-banner">
             <span className="discovery-text">
-              Found {discoveredTools.length} unregistered tool{discoveredTools.length > 1 ? "s" : ""}:{" "}
-              {discoveredTools.map((t) => t.name).join(", ")}
+              {t("found")} {discoveredTools.length} {t("toolUnit")}：{" "}
+              {discoveredTools.map((dt) => dt.name).join(", ")}
             </span>
             <button
               className="btn btn-primary btn-small"
               onClick={handleAddDiscoveredAll}
               disabled={addingDiscovered}
             >
-              {addingDiscovered ? "Adding..." : "Add All"}
+              {addingDiscovered ? t("adding") : t("addAll")}
             </button>
             <button
               className="btn btn-small"
               onClick={() => setDiscoveredTools([])}
             >
-              Dismiss
+              {t("dismiss")}
             </button>
           </div>
         )}
@@ -811,21 +1207,21 @@ function App() {
                   defaultValue=""
                   onChange={handleSelectTemplate}
                 >
-                  <option value="" disabled>Choose a template...</option>
-                  {templates.map((t, i) => (
-                    <option key={t.name} value={i}>{t.name}</option>
+                  <option value="" disabled>{t("templatePlaceholder")}</option>
+                  {templates.map((tp, i) => (
+                    <option key={tp.name} value={i}>{tp.name}</option>
                   ))}
                 </select>
               </div>
             )}
             <div className="form-row">
               <input type="text" value={newToolName} onChange={(e) => setNewToolName(e.target.value)}
-                className="edit-input" placeholder="Tool name" />
+                className="edit-input" placeholder={t("toolNamePlaceholder")} />
               <input type="text" value={newToolGlobal} onChange={(e) => setNewToolGlobal(e.target.value)}
-                className="edit-input" placeholder="Global path (e.g. ~/.mytool/skills/)" />
+                className="edit-input" placeholder={t("globalPathPlaceholder")} />
               <input type="text" value={newToolRel} onChange={(e) => setNewToolRel(e.target.value)}
-                className="edit-input" placeholder="Project rel path (e.g. .mytool/skills/)" />
-              <button className="btn btn-primary btn-small" onClick={handleAddTool}>Add</button>
+                className="edit-input" placeholder={t("relPathPlaceholder")} />
+              <button className="btn btn-primary btn-small" onClick={handleAddTool}>{t("add")}</button>
             </div>
           </div>
         )}
@@ -836,25 +1232,25 @@ function App() {
               <div className="tool-header">
                 <span className="tool-name">{tool.name}</span>
                 <div className="tool-actions">
-                  <button className="btn btn-small" onClick={() => startEdit(tool)}>Edit</button>
+                  <button className="btn btn-small" onClick={() => startEdit(tool)}>{t("edit")}</button>
                   <button className="btn btn-small btn-danger" onClick={() => handleDeleteTool(tool.id, tool.name)}>×</button>
                 </div>
               </div>
               {editingTool === tool.id ? (
                 <div className="tool-edit">
                   <div className="edit-row">
-                    <label>Global path:</label>
+                    <label>{t("globalPath")}</label>
                     <input type="text" value={editGlobalPath} onChange={(e) => setEditGlobalPath(e.target.value)}
                       className="edit-input" />
                   </div>
                   <div className="edit-row">
-                    <label>Project path:</label>
+                    <label>{t("projectPath")}</label>
                     <input type="text" value={editRelPath} onChange={(e) => setEditRelPath(e.target.value)}
                       className="edit-input" />
                   </div>
                   <div className="edit-actions">
-                    <button onClick={() => saveEdit(tool.id)} className="btn btn-primary btn-small">Save</button>
-                    <button onClick={() => setEditingTool(null)} className="btn btn-secondary btn-small">Cancel</button>
+                    <button onClick={() => saveEdit(tool.id)} className="btn btn-primary btn-small">{t("save")}</button>
+                    <button onClick={() => setEditingTool(null)} className="btn btn-secondary btn-small">{t("cancel")}</button>
                   </div>
                 </div>
               ) : (
@@ -869,21 +1265,21 @@ function App() {
       <section className="section">
         <div className="action-bar">
           <button className="btn btn-primary" onClick={handleScan} disabled={scanning}>
-            {scanning ? "Scanning..." : "Scan All"}
+            {scanning ? t("scanning") : t("scanAll")}
           </button>
           <button className="btn btn-secondary" onClick={handleCheckUpdates} disabled={checkingUpdates}>
-            {checkingUpdates ? "Checking..." : "Check Updates"}
+            {checkingUpdates ? t("checking") : t("checkUpdates")}
             {updates.length > 0 && <span className="update-badge">{updates.length}</span>}
           </button>
           <button className="btn btn-secondary" onClick={handleSyncAll} disabled={scanning}>
-            Sync All Active
+            {t("syncAllActive")}
           </button>
           <div className="search-box">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search skills..."
+              placeholder={t("searchPlaceholder")}
               className="search-input"
             />
           </div>
@@ -892,14 +1288,14 @@ function App() {
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
           >
-            <option value="name">Name</option>
-            <option value="updated_at">Updated</option>
-            <option value="created_at">Created</option>
+            <option value="name">{t("sortName")}</option>
+            <option value="updated_at">{t("sortUpdated")}</option>
+            <option value="created_at">{t("sortCreated")}</option>
           </select>
           <button
             className="btn btn-small sort-dir-btn"
             onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-            title={sortDir === "asc" ? "Ascending" : "Descending"}
+            title={sortDir === "asc" ? t("ascending") : t("descending")}
           >
             {sortDir === "asc" ? "A\u2192Z" : "Z\u2192A"}
           </button>
@@ -909,8 +1305,8 @@ function App() {
       {/* Skill grid */}
       <section className="section">
         <h2 className="section-title">
-          Skills {filteredSkills.length > 0 && <span className="badge">{filteredSkills.length}</span>}
-          {updates.length > 0 && <span className="badge badge-update">{updates.length} updates</span>}
+          {t("skills")} {filteredSkills.length > 0 && <span className="badge">{filteredSkills.length}</span>}
+          {updates.length > 0 && <span className="badge badge-update">{updates.length} {t("updates")}</span>}
         </h2>
 
         {scanning && skills.length === 0 ? (
@@ -922,11 +1318,11 @@ function App() {
         ) : filteredSkills.length === 0 ? (
           <div className="empty-state">
             {searchQuery ? (
-              <p>No matching skills found for "{searchQuery}"</p>
+              <p>{t("noMatch")} "{searchQuery}"</p>
             ) : (
               <>
-                <p>No skills discovered yet.</p>
-                <p>Configure tool paths above and click "Scan All" to discover skills.</p>
+                <p>{t("noSkillsYet")}</p>
+                <p>{t("configureAndScan")}</p>
               </>
             )}
           </div>
@@ -936,7 +1332,7 @@ function App() {
               <div key={skill.id} className={`skill-card ${hasUpdate(skill) ? "skill-has-update" : ""}`}>
                 <div className="skill-header">
                   <h3 className="skill-name">{skill.name}</h3>
-                  {hasUpdate(skill) && <span className="update-indicator" title="Update available">●</span>}
+                  {hasUpdate(skill) && <span className="update-indicator" title={t("updateAvailable")}>●</span>}
                   {syncing.has(skill.id) && <span className="sync-spinner">⟳</span>}
                 </div>
 
@@ -961,7 +1357,7 @@ function App() {
                         </label>
                         {inst?.synced_at && (
                           <span className="sync-time" title={inst.synced_at}>
-                            synced
+                            {t("synced")}
                           </span>
                         )}
                       </div>
@@ -976,7 +1372,7 @@ function App() {
                     onClick={() => handleSyncSkill(skill.id)}
                     disabled={syncing.has(skill.id)}
                   >
-                    {syncing.has(skill.id) ? "Syncing..." : "Sync Now"}
+                    {syncing.has(skill.id) ? t("syncingCard") : t("syncNow")}
                   </button>
                 )}
               </div>
@@ -989,19 +1385,19 @@ function App() {
       {scanResult && (
         <div className="modal-overlay" onClick={() => setScanResult(null)}>
           <div className="modal scan-result-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Scan Results</h3>
+            <h3>{t("scanResults")}</h3>
             <div className="scan-summary">
               <span className="scan-summary-item">
-                Found <strong>{scanResult.skills_found}</strong>
+                {t("found")} <strong>{scanResult.skills_found}</strong>
               </span>
               {scanResult.skills_new > 0 && (
                 <span className="scan-summary-item scan-new">
-                  {scanResult.skills_new} new
+                  {scanResult.skills_new} {t("new")}
                 </span>
               )}
               {scanResult.skills_updated > 0 && (
                 <span className="scan-summary-item scan-updated">
-                  {scanResult.skills_updated} updated
+                  {scanResult.skills_updated} {t("updated")}
                 </span>
               )}
             </div>
@@ -1009,10 +1405,10 @@ function App() {
               <table className="scan-detail-table">
                 <thead>
                   <tr>
-                    <th>Skill</th>
-                    <th>Tool</th>
-                    <th>Scope</th>
-                    <th>Status</th>
+                    <th>{t("skill")}</th>
+                    <th>{t("tool")}</th>
+                    <th>{t("scope")}</th>
+                    <th>{t("status")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1032,7 +1428,7 @@ function App() {
               </table>
             </div>
             <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setScanResult(null)}>Close</button>
+              <button className="btn btn-primary" onClick={() => setScanResult(null)}>{t("close")}</button>
             </div>
           </div>
         </div>
@@ -1045,7 +1441,7 @@ function App() {
             {selectedUpdateDiff ? (
               <>
                 <div className="diff-header">
-                  <button className="btn btn-small" onClick={() => setSelectedUpdateDiff(null)}>&larr; Back</button>
+                  <button className="btn btn-small" onClick={() => setSelectedUpdateDiff(null)}>&larr; {t("back")}</button>
                   <h3 className="diff-title">{selectedUpdateDiff.update.skill_name}</h3>
                 </div>
                 <div className="diff-meta">
@@ -1081,7 +1477,7 @@ function App() {
                     </div>
                   ))}
                   {!selectedUpdateDiff.diff.has_changes && (
-                    <div className="diff-no-changes">No file-level differences detected (hash may differ due to metadata).</div>
+                    <div className="diff-no-changes">{t("noChanges")}</div>
                   )}
                 </div>
                 <div className="modal-actions">
@@ -1089,19 +1485,19 @@ function App() {
                     className="btn btn-primary"
                     onClick={() => handleUpdateFromDiff(selectedUpdateDiff.update.skill_id)}
                   >
-                    Update to SSOT
+                    {t("updateToSsot")}
                   </button>
                   <button
                     className="btn btn-secondary"
                     onClick={() => handleSkipUpdate(selectedUpdateDiff.update.skill_id)}
                   >
-                    Skip
+                    {t("skip")}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <h3>Updates Available ({updates.length})</h3>
+                <h3>{t("updatesAvailable")} ({updates.length})</h3>
                 <div className="updates-list">
                   {updates.map((u) => (
                     <div key={u.skill_id} className="update-item">
@@ -1115,26 +1511,26 @@ function App() {
                           onClick={() => handleViewDiff(u)}
                           disabled={loadingDiff === u.skill_id}
                         >
-                          {loadingDiff === u.skill_id ? "Loading..." : "View Diff"}
+                          {loadingDiff === u.skill_id ? t("loading") : t("viewDiff")}
                         </button>
                         <button
                           className="btn btn-small btn-primary"
                           onClick={() => handleUpdateFromDiff(u.skill_id)}
                         >
-                          Update
+                          {t("update")}
                         </button>
                         <button
                           className="btn btn-small"
                           onClick={() => handleSkipUpdate(u.skill_id)}
                         >
-                          Skip
+                          {t("skip")}
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="modal-actions">
-                  <button className="btn btn-secondary" onClick={() => setShowUpdatesModal(false)}>Close</button>
+                  <button className="btn btn-secondary" onClick={() => setShowUpdatesModal(false)}>{t("close")}</button>
                 </div>
               </>
             )}

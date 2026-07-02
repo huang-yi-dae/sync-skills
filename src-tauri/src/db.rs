@@ -394,6 +394,22 @@ impl Database {
             .ok();
 
         if let Some(id) = existing_by_path {
+            // Check if another skill already owns this core_hash
+            let conflict_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM skills WHERE core_hash = ?1 AND core_hash != '' AND id != ?2",
+                    params![core_hash, id],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if let Some(other_id) = conflict_id {
+                // Another skill has the same SKILL.md content.
+                // Merge: delete the duplicate, keep this one (by source_path).
+                conn.execute("DELETE FROM skills WHERE id = ?1", params![other_id])
+                    .map_err(|e| format!("Failed to delete duplicate skill: {}", e))?;
+            }
+
             conn.execute(
                 "UPDATE skills SET name = ?1, description = ?2, content_hash = ?3,
                  core_hash = ?4, updated_at = datetime('now')
@@ -798,6 +814,18 @@ impl Database {
             params![content_hash, core_hash, skill_id],
         )
         .map_err(|e| format!("Failed to update skill hashes: {}", e))?;
+        Ok(())
+    }
+
+    /// Update only content_hash (leave core_hash untouched).
+    pub fn update_content_hash(&self, skill_id: i64, content_hash: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE skills SET content_hash = ?1, updated_at = datetime('now')
+             WHERE id = ?2",
+            params![content_hash, skill_id],
+        )
+        .map_err(|e| format!("Failed to update content hash: {}", e))?;
         Ok(())
     }
 

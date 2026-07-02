@@ -4,41 +4,41 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
 :root {
-  /* Deep dark base with subtle blue undertone */
-  --bg: #08080c;
-  --bg-elevated: #0f0f14;
-  --surface: #14141c;
-  --surface-hover: #1a1a26;
-  --card: #181824;
-  --card-hover: #1e1e2e;
+  /* Light theme — clean warm white */
+  --bg: #fafaf8;
+  --bg-elevated: #f0efeb;
+  --surface: #ffffff;
+  --surface-hover: #f7f6f3;
+  --card: #ffffff;
+  --card-hover: #f7f6f3;
 
   /* Warm amber accent + teal secondary */
-  --accent: #e8a045;
-  --accent-dim: #c48530;
-  --accent-glow: rgba(232, 160, 69, 0.12);
-  --accent-glow-strong: rgba(232, 160, 69, 0.25);
-  --teal: #3dd8c5;
-  --teal-dim: rgba(61, 216, 197, 0.12);
+  --accent: #c47f1e;
+  --accent-dim: #a56a14;
+  --accent-glow: rgba(196, 127, 30, 0.1);
+  --accent-glow-strong: rgba(196, 127, 30, 0.22);
+  --teal: #1a9e8f;
+  --teal-dim: rgba(26, 158, 143, 0.1);
 
   /* Status colors */
-  --success: #34d399;
-  --success-dim: rgba(52, 211, 153, 0.1);
-  --error: #f87171;
-  --error-dim: rgba(248, 113, 113, 0.1);
-  --info: #60a5fa;
-  --info-dim: rgba(96, 165, 250, 0.1);
+  --success: #1a9e6e;
+  --success-dim: rgba(26, 158, 110, 0.1);
+  --error: #dc3545;
+  --error-dim: rgba(220, 53, 69, 0.08);
+  --info: #3b7dd8;
+  --info-dim: rgba(59, 125, 216, 0.1);
 
   /* Text hierarchy */
-  --text: #e2e2ea;
-  --text-secondary: #8e8ea0;
-  --text-muted: #55556a;
-  --text-on-accent: #08080c;
+  --text: #1a1a2e;
+  --text-secondary: #555566;
+  --text-muted: #9999aa;
+  --text-on-accent: #ffffff;
 
   /* Borders and inputs */
-  --border: #1f1f2e;
-  --border-hover: #2a2a3e;
-  --input-bg: #0c0c12;
-  --input-border: #252536;
+  --border: #e2e1dc;
+  --border-hover: #cccbc5;
+  --input-bg: #ffffff;
+  --input-border: #d4d3ce;
 
   /* Typography */
   --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -48,6 +48,96 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+
+  /* Shared non-variable colors */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.12);
+  --overlay-bg: rgba(0, 0, 0, 0.3);
+  --noise-opacity: 0.015;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  /* Deep dark base with subtle blue undertone */
+  --bg: #08080c;
+  --bg-elevated: #0f0f14;
+  --surface: #14141c;
+  --surface-hover: #1a1a26;
+  --card: #181824;
+  --card-hover: #1e1e2e;
+
+  --accent: #e8a045;
+  --accent-dim: #c48530;
+  --accent-glow: rgba(232, 160, 69, 0.12);
+  --accent-glow-strong: rgba(232, 160, 69, 0.25);
+  --teal: #3dd8c5;
+  --teal-dim: rgba(61, 216, 197, 0.12);
+
+  --success: #34d399;
+  --success-dim: rgba(52, 211, 153, 0.1);
+  --error: #f87171;
+  --error-dim: rgba(248, 113, 113, 0.1);
+  --info: #60a5fa;
+  --info-dim: rgba(96, 165, 250, 0.1);
+
+  --text: #e2e2ea;
+  --text-secondary: #8e8ea0;
+  --text-muted: #55556a;
+  --text-on-accent: #08080c;
+
+  --border: #1f1f2e;
+  --border-hover: #2a2a3e;
+  --input-bg: #0c0c12;
+  --input-border: #252536;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.4);
+  --overlay-bg: rgba(0, 0, 0, 0.65);
+  --noise-opacity: 0.025;
+}
+
+/* System theme — follows OS preference */
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    --bg: #08080c;
+    --bg-elevated: #0f0f14;
+    --surface: #14141c;
+    --surface-hover: #1a1a26;
+    --card: #181824;
+    --card-hover: #1e1e2e;
+
+    --accent: #e8a045;
+    --accent-dim: #c48530;
+    --accent-glow: rgba(232, 160, 69, 0.12);
+    --accent-glow-strong: rgba(232, 160, 69, 0.25);
+    --teal: #3dd8c5;
+    --teal-dim: rgba(61, 216, 197, 0.12);
+
+    --success: #34d399;
+    --success-dim: rgba(52, 211, 153, 0.1);
+    --error: #f87171;
+    --error-dim: rgba(248, 113, 113, 0.1);
+    --info: #60a5fa;
+    --info-dim: rgba(96, 165, 250, 0.1);
+
+    --text: #e2e2ea;
+    --text-secondary: #8e8ea0;
+    --text-muted: #55556a;
+    --text-on-accent: #08080c;
+
+    --border: #1f1f2e;
+    --border-hover: #2a2a3e;
+    --input-bg: #0c0c12;
+    --input-border: #252536;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.4);
+    --overlay-bg: rgba(0, 0, 0, 0.65);
+    --noise-opacity: 0.025;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -68,7 +158,7 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.025;
+  opacity: var(--noise-opacity);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   z-index: 9999;
 }
@@ -144,7 +234,7 @@ body::before {
 .tab-active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .tab-disabled { opacity: 0.3; cursor: not-allowed; }
@@ -451,7 +541,7 @@ body::before {
   margin-bottom: 10px;
   padding: 10px 16px;
   background: var(--accent-glow);
-  border: 1px solid rgba(232, 160, 69, 0.2);
+  border: 1px solid var(--accent-glow);
   border-radius: var(--radius-md);
 }
 
@@ -758,19 +848,19 @@ body::before {
 }
 
 .toast-success {
-  background: rgba(52, 211, 153, 0.12);
+  background: var(--success-dim);
   color: var(--success);
   border-color: rgba(52, 211, 153, 0.2);
 }
 
 .toast-error {
-  background: rgba(248, 113, 113, 0.12);
+  background: var(--error-dim);
   color: var(--error);
   border-color: rgba(248, 113, 113, 0.2);
 }
 
 .toast-info {
-  background: rgba(96, 165, 250, 0.12);
+  background: var(--info-dim);
   color: var(--info);
   border-color: rgba(96, 165, 250, 0.2);
 }
@@ -865,6 +955,27 @@ body::before {
   line-height: 1.5;
 }
 
+.settings-row {
+  display: flex;
+  gap: 16px;
+}
+
+.settings-field {
+  flex: 1;
+}
+
+.settings-field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.settings-field .settings-select {
+  margin-bottom: 0;
+}
+
 /* ==================== Sync Logs ==================== */
 
 .log-table-wrapper {
@@ -952,7 +1063,7 @@ body::before {
 .action-scan { background: var(--info-dim); color: var(--info); }
 .action-sync { background: var(--teal-dim); color: var(--teal); }
 .action-toggle_on { background: var(--success-dim); color: var(--success); }
-.action-toggle_off { background: rgba(142, 142, 160, 0.1); color: var(--text-secondary); }
+.action-toggle_off { background: var(--surface); color: var(--text-secondary); }
 .action-add_tool, .action-add_project { background: var(--success-dim); color: var(--success); }
 .action-delete_tool, .action-delete_project { background: var(--error-dim); color: var(--error); }
 
@@ -979,7 +1090,7 @@ body::before {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -1000,7 +1111,7 @@ body::before {
   padding: 28px;
   min-width: 420px;
   max-width: 500px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
   animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1302,11 +1413,11 @@ body::before {
 }
 
 .diff-line-add {
-  background: rgba(52, 211, 153, 0.08);
+  background: var(--success-dim);
 }
 
 .diff-line-del {
-  background: rgba(248, 113, 113, 0.08);
+  background: var(--error-dim);
 }
 
 .diff-line-ctx {
@@ -1362,4 +1473,27 @@ body::before {
 ::selection {
   background: var(--accent-glow-strong);
   color: var(--text);
+}
+
+/* ==================== Light theme adjustments ==================== */
+
+.skill-card {
+  box-shadow: var(--shadow-sm);
+}
+
+.tool-item {
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .skill-card,
+[data-theme="dark"] .tool-item {
+  box-shadow: none;
+}
+
+/* System theme dark adjustments */
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] .skill-card,
+  [data-theme="system"] .tool-item {
+    box-shadow: none;
+  }
 }

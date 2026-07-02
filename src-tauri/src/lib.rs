@@ -464,6 +464,20 @@ async fn check_updates(
             match hash::compute_content_hash(&path) {
                 Ok(new_hash) => {
                     if new_hash != *old_hash {
+                        // Source hash changed. Check if SSOT is already in sync.
+                        if let Ok(ssot) = sync::ssot_path(skill_name) {
+                            if ssot.exists() {
+                                if let Ok(ssot_hash) = hash::compute_content_hash(&ssot) {
+                                    if ssot_hash == new_hash {
+                                        // Source and SSOT match — DB hash is just stale.
+                                        // Auto-refresh so this won't be flagged again.
+                                        let _ = db.update_content_hash(*skill_id, &new_hash);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        // Real change: source differs from SSOT
                         updates.push(SkillUpdate {
                             skill_id: *skill_id,
                             skill_name: skill_name.clone(),
