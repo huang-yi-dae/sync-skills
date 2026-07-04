@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::hash::{compute_content_hash, compute_core_hash};
 use crate::models::DiscoveredSkill;

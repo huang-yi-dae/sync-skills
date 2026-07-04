@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Tauri-v2-orange?style=flat-square&logo=tauri" alt="tauri">
   <img src="https://img.shields.io/badge/Rust-2021-brown?style=flat-square&logo=rust" alt="rust">
   <img src="https://img.shields.io/badge/React-19-blue?style=flat-square&logo=react" alt="react">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-green?style=flat-square" alt="license">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="platform">
 </p>
 
@@ -138,4 +138,4 @@ npx tsc --noEmit               # TypeScript type check
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)
