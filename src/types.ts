@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 export interface Tool {
   id: number;
@@ -72,6 +72,7 @@ export interface SkillUpdate {
   source_path: string;
   old_hash: string;
   new_hash: string;
+  changed_tool: string | null;
 }
 
 export interface SyncLog {

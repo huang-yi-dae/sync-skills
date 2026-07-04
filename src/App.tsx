@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -102,6 +102,10 @@ const translations: Record<Lang, Record<string, string>> = {
     synced: "已同步",
     syncNow: "立即同步",
     syncingCard: "同步中...",
+    checkUpdate: "检查更新",
+    checkingUpdate: "检查中...",
+    inSync: "已同步",
+    changedIn: "变更来自",
 
     // Project nav
     noProjects: "暂无项目，添加一个开始使用。",
@@ -267,6 +271,10 @@ const translations: Record<Lang, Record<string, string>> = {
     synced: "synced",
     syncNow: "Sync Now",
     syncingCard: "Syncing...",
+    checkUpdate: "Check Update",
+    checkingUpdate: "Checking...",
+    inSync: "In sync",
+    changedIn: "Changed in",
 
     // Project nav
     noProjects: "No projects yet. Add one to get started.",
@@ -392,6 +400,7 @@ function App() {
   const [scanning, setScanning] = useState(false);
   const [syncing, setSyncing] = useState<Set<number>>(new Set());
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [checkingSingle, setCheckingSingle] = useState<number | null>(null);
   const [updates, setUpdates] = useState<SkillUpdate[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -622,6 +631,29 @@ function App() {
       addToast("error", `${t("checkUpdatesFailed")}: ${e}`);
     } finally {
       setCheckingUpdates(false);
+    }
+  }
+
+  async function handleCheckSingleSkill(skillId: number) {
+    setCheckingSingle(skillId);
+    try {
+      const result = await invoke<SkillUpdate | null>("check_skill_update", { skillId });
+      if (result) {
+        // Found update — open diff view
+        const diff = await invoke<SkillDiff>("get_skill_diff", { skillId });
+        setSelectedUpdateDiff({ update: result, diff });
+        setUpdates((prev) => {
+          const filtered = prev.filter((u) => u.skill_id !== skillId);
+          return [...filtered, result];
+        });
+        setShowUpdatesModal(true);
+      } else {
+        addToast("info", `${t("inSync")}`);
+      }
+    } catch (e) {
+      addToast("error", `${t("failedLoadDiff")}: ${e}`);
+    } finally {
+      setCheckingSingle(null);
     }
   }
 
@@ -1365,16 +1397,25 @@ function App() {
                   })}
                 </div>
 
-                {/* Sync button (visible when any tool is active) */}
-                {skill.install_count > 0 && (
+                {/* Action buttons */}
+                <div className="skill-actions">
                   <button
-                    className="btn btn-small btn-primary sync-btn"
-                    onClick={() => handleSyncSkill(skill.id)}
-                    disabled={syncing.has(skill.id)}
+                    className="btn btn-small"
+                    onClick={() => handleCheckSingleSkill(skill.id)}
+                    disabled={checkingSingle === skill.id}
                   >
-                    {syncing.has(skill.id) ? t("syncingCard") : t("syncNow")}
+                    {checkingSingle === skill.id ? t("checkingUpdate") : t("checkUpdate")}
                   </button>
-                )}
+                  {skill.install_count > 0 && (
+                    <button
+                      className="btn btn-small btn-primary"
+                      onClick={() => handleSyncSkill(skill.id)}
+                      disabled={syncing.has(skill.id)}
+                    >
+                      {syncing.has(skill.id) ? t("syncingCard") : t("syncNow")}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

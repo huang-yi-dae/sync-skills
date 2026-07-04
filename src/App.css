@@ -796,6 +796,16 @@ body::before {
   justify-content: center;
 }
 
+.skill-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.skill-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+
 /* ==================== Badges ==================== */
 
 .badge {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 mod db;
 mod diff;
@@ -444,6 +444,78 @@ async fn sync_all_pending(db: State<'_, DbState>) -> Result<Vec<SyncResult>, Str
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Check if any tool directory for a skill differs from SSOT.
+/// Returns Some(SkillUpdate) if a change is detected, None if all in sync.
+fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate>, String> {
+    let skill = db.get_skill_by_id(skill_id)?;
+    let ssot = sync::ssot_path(&skill.name)?;
+
+    // Compute SSOT hash (None if SSOT doesn't exist yet)
+    let ssot_hash = if ssot.exists() {
+        hash::compute_content_hash(&ssot).ok()
+    } else {
+        None
+    };
+
+    // Check all active installation paths against SSOT
+    if let Ok(installations) = db.get_all_active_paths(skill_id) {
+        for (_tool_id, tool_name, install_path) in &installations {
+            let path = PathBuf::from(install_path);
+            if !path.exists() {
+                continue;
+            }
+
+            if let Ok(install_hash) = hash::compute_content_hash(&path) {
+                match &ssot_hash {
+                    Some(sh) if *sh == install_hash => continue, // in sync
+                    _ => {
+                        // This tool directory differs from SSOT
+                        let old_hash = ssot_hash.clone().unwrap_or_default();
+                        return Ok(Some(SkillUpdate {
+                            skill_id,
+                            skill_name: skill.name.clone(),
+                            source_path: install_path.clone(),
+                            old_hash,
+                            new_hash: install_hash,
+                            changed_tool: Some(tool_name.clone()),
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    // Also check source_path against SSOT (backward compat)
+    let source = PathBuf::from(&skill.source_path);
+    if source.exists() {
+        if let Ok(source_hash) = hash::compute_content_hash(&source) {
+            match &ssot_hash {
+                Some(sh) if *sh == source_hash => {} // in sync
+                _ => {
+                    let old_hash = ssot_hash.unwrap_or_default();
+                    return Ok(Some(SkillUpdate {
+                        skill_id,
+                        skill_name: skill.name.clone(),
+                        source_path: skill.source_path.clone(),
+                        old_hash,
+                        new_hash: source_hash,
+                        changed_tool: None,
+                    }));
+                }
+            }
+        }
+    }
+
+    // Auto-refresh DB content_hash from source if everything is in sync
+    if let Some(sh) = &ssot_hash {
+        if sh != &skill.content_hash {
+            let _ = db.update_content_hash(skill_id, sh);
+        }
+    }
+
+    Ok(None)
+}
+
 #[tauri::command]
 async fn check_updates(
     db: State<'_, DbState>,
@@ -455,42 +527,11 @@ async fn check_updates(
         let skills = db.get_all_skills_for_update_check()?;
         let mut updates = Vec::new();
 
-        for (skill_id, skill_name, source_path, old_hash) in &skills {
-            let path = PathBuf::from(source_path);
-            if !path.exists() {
-                continue;
-            }
-
-            match hash::compute_content_hash(&path) {
-                Ok(new_hash) => {
-                    if new_hash != *old_hash {
-                        // Source hash changed. Check if SSOT is already in sync.
-                        if let Ok(ssot) = sync::ssot_path(skill_name) {
-                            if ssot.exists() {
-                                if let Ok(ssot_hash) = hash::compute_content_hash(&ssot) {
-                                    if ssot_hash == new_hash {
-                                        // Source and SSOT match — DB hash is just stale.
-                                        // Auto-refresh so this won't be flagged again.
-                                        let _ = db.update_content_hash(*skill_id, &new_hash);
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        // Real change: source differs from SSOT
-                        updates.push(SkillUpdate {
-                            skill_id: *skill_id,
-                            skill_name: skill_name.clone(),
-                            source_path: source_path.clone(),
-                            old_hash: old_hash.clone(),
-                            new_hash,
-                        });
-                    }
-                }
-                Err(_) => {
-                    // Hash computation failed, skip
-                    continue;
-                }
+        for (skill_id, _skill_name, _source_path, _old_hash) in &skills {
+            match check_single_skill(&db, *skill_id) {
+                Ok(Some(update)) => updates.push(update),
+                Ok(None) => {} // in sync
+                Err(_) => continue,
             }
         }
 
@@ -498,6 +539,18 @@ async fn check_updates(
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn check_skill_update(
+    db: State<'_, DbState>,
+    skill_id: i64,
+) -> Result<Option<SkillUpdate>, String> {
+    let db = db.inner().clone();
+
+    tokio::task::spawn_blocking(move || check_single_skill(&db, skill_id))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
@@ -596,7 +649,8 @@ pub fn run() {
             sync_skill,
             sync_all_pending,
             check_updates,
-            get_skill_diff,
+        check_skill_update,
+        get_skill_diff,
             // Settings (M2)
             get_settings,
             update_settings,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +72,8 @@ pub struct SkillUpdate {
     pub source_path: String,
     pub old_hash: String,
     pub new_hash: String,
+    /// Which tool directory has the change (None if source_path changed)
+    pub changed_tool: Option<String>,
 }
 
 /// A sync log entry

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::hash::compute_id_hash;
 use crate::models::{InstallationInfo, Project, Skill, SkillView, SyncLog, Tool};
@@ -815,6 +815,54 @@ impl Database {
         )
         .map_err(|e| format!("Failed to update skill hashes: {}", e))?;
         Ok(())
+    }
+
+    /// Get all active installation paths for a skill across ALL projects.
+    /// Returns Vec<(tool_id, tool_name, absolute_path)>.
+    pub fn get_all_active_paths(&self, skill_id: i64) -> Result<Vec<(i64, String, String)>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT si.tool_id, t.name, t.global_path, t.project_rel_path,
+                        si.project_id, p.path, s.name
+                 FROM skill_installations si
+                 JOIN tools t ON si.tool_id = t.id
+                 JOIN skills s ON si.skill_id = s.id
+                 LEFT JOIN projects p ON si.project_id = p.id
+                 WHERE si.skill_id = ?1 AND si.status = 'active'"
+            )
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let results = stmt
+            .query_map(params![skill_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(|e| format!("Query error: {}", e))?;
+
+        let mut paths = Vec::new();
+        for row in results {
+            let (tool_id, tool_name, global_path, rel_path, project_id, project_path, skill_name) =
+                row.map_err(|e| format!("Row error: {}", e))?;
+            let base = if project_id == 0 {
+                scanner::expand_path(&global_path)?
+            } else {
+                let pp = project_path.unwrap_or_default();
+                let expanded = scanner::expand_path(&pp)?;
+                expanded.join(&rel_path)
+            };
+            let skill_dir = base.join(&skill_name);
+            paths.push((tool_id, tool_name, skill_dir.to_string_lossy().to_string()));
+        }
+        Ok(paths)
     }
 
     /// Update only content_hash (leave core_hash untouched).

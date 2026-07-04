@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -64,6 +64,13 @@ fn collect_files(
         // Skip hidden files/dirs
         if is_hidden(&path) {
             continue;
+        }
+
+        // Skip sync metadata files (injected by sync engine, not part of skill content)
+        if let Some(name) = path.file_name() {
+            if name == "local.md" {
+                continue;
+            }
         }
 
         if path.is_dir() {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Skill Manager Contributors
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 
 //! Simple directory diff for comparing skill source vs SSOT copies.
 
@@ -137,9 +137,10 @@ fn collect_recursive(base: &Path, current: &Path, map: &mut BTreeMap<String, Str
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        // Skip hidden files/dirs
+        // Skip hidden files/dirs and sync metadata
         if let Some(name) = path.file_name() {
-            if name.to_string_lossy().starts_with('.') {
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with('.') || name_str == "local.md" {
                 continue;
             }
         }
