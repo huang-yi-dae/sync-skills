@@ -28,6 +28,7 @@ export interface InstallationInfo {
   tool_name: string;
   status: string;
   synced_at: string | null;
+  installation_synced_at: string | null;
 }
 
 export interface SkillView {
@@ -36,6 +37,9 @@ export interface SkillView {
   description: string | null;
   source_path: string;
   content_hash: string;
+  core_hash: string;
+  project_id: number;
+  ssot_updated_at: string | null;
   created_at: string;
   updated_at: string;
   installed_tools: InstallationInfo[];
@@ -121,6 +125,22 @@ export interface SkillDiff {
   ssot_path: string;
   files: FileDiff[];
   has_changes: boolean;
+}
+
+// M5: Conflict types
+export interface ConflictVersion {
+  tool_id: number;
+  tool_name: string;
+  core_hash: string;
+  source_path: string;
+}
+
+export interface ConflictView {
+  id: number;
+  skill_id: number;
+  skill_name: string;
+  detected_at: string;
+  versions: ConflictVersion[];
 }
 
 export interface Toast {

@@ -5,6 +5,7 @@ mod db;
 mod diff;
 mod discovery;
 mod hash;
+mod lock;
 mod models;
 mod scanner;
 mod settings;
@@ -14,7 +15,7 @@ use db::Database;
 use diff::SkillDiff;
 use discovery::ToolTemplate;
 use models::{
-    Project, ScanDetail, ScanResult, SkillUpdate, SkillView, SyncLog, SyncResult, Tool,
+    ConflictView, Project, ScanDetail, ScanResult, SkillUpdate, SkillView, SyncLog, SyncResult, Tool,
 };
 use settings::Settings;
 use std::path::PathBuf;
@@ -25,8 +26,9 @@ type DbState = Arc<Database>;
 
 // ==================== Shared Helpers ====================
 
-/// Core scan logic: scan a list of (tool_id, global_path) pairs, upsert to DB.
-/// Deduplicates skills by name: same skill in different tool dirs → one card, multiple installations.
+/// Core scan logic: scan a list of (tool_id, path) pairs, upsert to DB.
+/// Name-as-identity: same skill name across different tools → one skill record, multiple installations.
+/// After scan, detects conflicts (different core_hash across tools for same skill name).
 fn scan_tool_paths(
     db: &Database,
     tool_paths: &[(i64, String, String)],
@@ -74,51 +76,85 @@ fn scan_tool_paths(
         }
     }
 
-    // Upsert skills and auto-create installation records.
-    // upsert_skill handles dedup: source_path first (location identity),
-    // then core_hash (content identity across directories).
-    for (tool_id, skill) in &all_skills {
-        let tname = tool_name_map.get(tool_id).cloned().unwrap_or_else(|| format!("Tool#{}", tool_id));
+    // Group by skill name — name-as-identity: same name = same skill
+    let mut by_name: std::collections::HashMap<String, Vec<(i64, models::DiscoveredSkill)>> =
+        std::collections::HashMap::new();
+    for (tool_id, skill) in all_skills {
+        by_name.entry(skill.name.clone()).or_default().push((tool_id, skill));
+    }
+
+    // Upsert one record per unique skill name, then create installations for each tool
+    for (name, entries) in &by_name {
+        // Use the first discovered entry for metadata
+        let first = &entries[0].1;
 
         let skill_id = match db.upsert_skill(
-            &skill.name,
-            skill.description.as_deref(),
-            &skill.source_path,
-            &skill.content_hash,
-            &skill.core_hash,
+            name,
+            first.description.as_deref(),
+            &first.source_path,
+            &first.content_hash,
+            &first.core_hash,
+            project_id,
         ) {
             Ok((id, is_new)) => {
-                let status = if is_new {
+                if is_new {
                     skills_new += 1;
-                    "new"
                 } else {
                     skills_updated += 1;
-                    "updated"
-                };
-                details.push(ScanDetail {
-                    skill_name: skill.name.clone(),
-                    tool_name: tname.clone(),
-                    scope: scope.clone(),
-                    status: status.to_string(),
-                    source_path: skill.source_path.clone(),
-                });
+                }
                 id
             }
             Err(e) => {
-                all_errors.push(format!("DB error for {}: {}", skill.name, e));
+                all_errors.push(format!("DB error for {}: {}", name, e));
                 continue;
             }
         };
 
-        // Auto-detect: skill physically exists in this tool's directory,
-        // so mark as active installation (only if no record exists yet).
-        let _ = db.ensure_installation(skill_id, *tool_id, project_id);
+        // Record scan details and create installations for each tool that has this skill
+        for (tool_id, skill) in entries {
+            let tname = tool_name_map.get(tool_id).cloned().unwrap_or_else(|| format!("Tool#{}", tool_id));
+            let status = if skills_new > skills_updated { "new" } else { "updated" };
+            details.push(ScanDetail {
+                skill_name: name.clone(),
+                tool_name: tname.clone(),
+                scope: scope.clone(),
+                status: status.to_string(),
+                source_path: skill.source_path.clone(),
+            });
+
+            // Auto-detect: skill physically exists in this tool's directory
+            let _ = db.ensure_installation(skill_id, *tool_id, project_id);
+        }
+
+        // Conflict detection: if different tools have different core_hash for same skill
+        if entries.len() > 1 {
+            let unique_hashes: std::collections::HashSet<&str> =
+                entries.iter().map(|(_, s)| s.core_hash.as_str()).collect();
+            if unique_hashes.len() > 1 {
+                // Build version info for the conflict
+                let versions: Vec<models::ConflictVersion> = entries.iter().map(|(tool_id, s)| {
+                    let tname = tool_name_map.get(tool_id).cloned().unwrap_or_default();
+                    models::ConflictVersion {
+                        tool_id: *tool_id,
+                        tool_name: tname,
+                        core_hash: s.core_hash.clone(),
+                        source_path: s.source_path.clone(),
+                    }
+                }).collect();
+                let detail = serde_json::to_string(&versions).unwrap_or_default();
+
+                // Only insert if no existing unresolved conflict
+                if let Ok(false) = db.has_unresolved_conflict(skill_id) {
+                    let _ = db.insert_conflict(skill_id, &detail);
+                }
+            }
+        }
     }
 
     // Log scan operation
     let status = if all_errors.is_empty() { "success" } else { "failed" };
     let log_detail = if all_errors.is_empty() {
-        format!("found={}, new={}, updated={}", all_skills.len(), skills_new, skills_updated)
+        format!("found={}, new={}, updated={}", by_name.len(), skills_new, skills_updated)
     } else {
         all_errors.join("; ")
     };
@@ -132,7 +168,7 @@ fn scan_tool_paths(
     );
 
     Ok(ScanResult {
-        skills_found: all_skills.len(),
+        skills_found: by_name.len(),
         skills_new,
         skills_updated,
         errors: all_errors,
@@ -571,6 +607,109 @@ async fn get_skill_diff(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+// ==================== Conflict Commands (M5) ====================
+
+#[tauri::command]
+fn list_conflicts(db: State<DbState>, project_id: Option<i64>) -> Result<Vec<ConflictView>, String> {
+    let pid = project_id.unwrap_or(0);
+    db.list_unresolved_conflicts(pid)
+}
+
+#[tauri::command]
+async fn resolve_conflict(
+    db: State<'_, DbState>,
+    conflict_id: i64,
+    keep_tool_name: String,
+    project_id: Option<i64>,
+) -> Result<SyncResult, String> {
+    let db = db.inner().clone();
+    let pid = project_id.unwrap_or(0);
+
+    tokio::task::spawn_blocking(move || -> Result<SyncResult, String> {
+        // Get the conflict to find the skill
+        let conflicts = db.list_unresolved_conflicts(pid)?;
+        let conflict = conflicts.iter().find(|c| c.id == conflict_id)
+            .ok_or_else(|| format!("Conflict {} not found", conflict_id))?;
+
+        let skill_id = conflict.skill_id;
+        let skill = db.get_skill_by_id(skill_id)?;
+
+        // Find the version to keep
+        let keep_version = conflict.versions.iter()
+            .find(|v| v.tool_name == keep_tool_name)
+            .ok_or_else(|| format!("Tool '{}' not found in conflict versions", keep_tool_name))?;
+
+        let source = PathBuf::from(&keep_version.source_path);
+        if !source.exists() {
+            return Err(format!("Source path does not exist: {}", keep_version.source_path));
+        }
+
+        // Sync the kept version to SSOT
+        sync::ensure_ssot_dir()?;
+        let ssot_target = sync::ssot_path(&skill.name)?;
+
+        if ssot_target.exists() {
+            sync::replace_directory(&source, &ssot_target)?;
+        } else {
+            sync::copy_directory(&source, &ssot_target)?;
+        }
+        let _ = sync::create_local_marker(&ssot_target);
+
+        // Propagate from SSOT to all other active installations
+        let installations = db.get_active_installation_paths(skill_id, pid)?;
+        let mut synced_to = 0usize;
+        let mut errors = Vec::new();
+
+        for (tool_id, target_path) in &installations {
+            let expanded = match scanner::expand_path(target_path) {
+                Ok(p) => p,
+                Err(e) => {
+                    errors.push(format!("Path expansion failed for tool {}: {}", tool_id, e));
+                    continue;
+                }
+            };
+            let target_dir = expanded.join(&skill.name);
+
+            let result = if target_dir.exists() {
+                sync::replace_directory(&ssot_target, &target_dir).map(|_| "replace".to_string())
+            } else {
+                sync::copy_directory(&ssot_target, &target_dir).map(|_| "copy".to_string())
+            };
+
+            match result {
+                Ok(_) => {
+                    db.update_synced_at(skill_id, *tool_id, pid)?;
+                    db.insert_sync_log(skill_id, *tool_id, pid, "from_ssot", "success", None)?;
+                    synced_to += 1;
+                }
+                Err(e) => {
+                    errors.push(format!("Tool {}: {}", tool_id, e));
+                    db.insert_sync_log(skill_id, *tool_id, pid, "from_ssot", "failed", Some(&e))?;
+                }
+            }
+        }
+
+        // Refresh hashes
+        if let Ok(new_content_hash) = hash::compute_content_hash(&source) {
+            let skill_md = source.join("SKILL.md");
+            let new_core_hash = hash::compute_core_hash(&skill_md).unwrap_or_default();
+            let _ = db.update_skill_hashes(skill_id, &new_content_hash, &new_core_hash);
+        }
+
+        // Mark conflict as resolved
+        db.resolve_conflict_record(conflict_id, &keep_tool_name)?;
+
+        Ok(SyncResult {
+            skill_id,
+            skill_name: skill.name,
+            synced_to,
+            errors,
+        })
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 // ==================== Settings Commands (M2) ====================
 
 #[tauri::command]
@@ -660,6 +799,9 @@ pub fn run() {
             delete_project,
             // Sync Logs (M3)
             get_sync_logs,
+            // Conflicts (M5)
+            list_conflicts,
+            resolve_conflict,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::hash::compute_id_hash;
-use crate::models::{InstallationInfo, Project, Skill, SkillView, SyncLog, Tool};
+use crate::models::{ConflictVersion, ConflictView, InstallationInfo, Project, Skill, SkillView, SyncLog, Tool};
 use crate::scanner;
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
@@ -74,15 +74,17 @@ impl Database {
                 id              INTEGER PRIMARY KEY,
                 name            TEXT    NOT NULL,
                 description     TEXT,
-                source_path     TEXT    NOT NULL UNIQUE,
+                source_path     TEXT    NOT NULL,
                 content_hash    TEXT    NOT NULL,
                 core_hash       TEXT    NOT NULL DEFAULT '',
+                project_id      INTEGER NOT NULL DEFAULT 0 REFERENCES projects(id) ON DELETE CASCADE,
+                ssot_updated_at TEXT,
                 created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-                updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+                updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(name, project_id)
             );
 
             CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_core_hash ON skills(core_hash) WHERE core_hash != '';
 
             CREATE TABLE IF NOT EXISTS skill_installations (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +94,7 @@ impl Database {
                 status          TEXT    NOT NULL DEFAULT 'disabled'
                     CHECK (status IN ('active', 'disabled')),
                 synced_at       TEXT,
+                installation_synced_at TEXT,
                 created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
                 UNIQUE (skill_id, tool_id, project_id)
@@ -253,6 +256,123 @@ impl Database {
             }
         }
 
+        // ==================== M4 Migration: Name-as-Identity ====================
+
+        // Check if skills table needs M4 migration (project_id column missing)
+        let needs_m4: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('skills') WHERE name = 'project_id'")
+            .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+            .map(|count| count == 0)
+            .unwrap_or(true);
+
+        if needs_m4 {
+            // 1. Add new columns to skills
+            conn.execute_batch(
+                "ALTER TABLE skills ADD COLUMN project_id INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE skills ADD COLUMN ssot_updated_at TEXT;",
+            ).map_err(|e| format!("M4 add skills columns failed: {}", e))?;
+
+            // 2. Merge duplicate skills with same name+project_id.
+            //    Keep the most recently updated record, remap installations, delete rest.
+            let dup_ids: Vec<i64> = conn.prepare(
+                "SELECT id FROM skills WHERE id NOT IN (
+                    SELECT MAX(id) FROM skills GROUP BY name, project_id
+                )"
+            ).map_err(|e| format!("M4 dup query failed: {}", e))?
+              .query_map([], |row| row.get(0))
+              .map_err(|e| format!("M4 dup query_map failed: {}", e))?
+              .filter_map(|r| r.ok())
+              .collect();
+
+            for dup_id in &dup_ids {
+                // Find the keeper (MAX(id) for the same name+project_id)
+                let keeper: Option<i64> = conn.query_row(
+                    "SELECT MAX(id) FROM skills WHERE id != ?1 AND name = (
+                        SELECT name FROM skills WHERE id = ?1
+                    ) AND project_id = (
+                        SELECT project_id FROM skills WHERE id = ?1
+                    )",
+                    params![dup_id], |row| row.get(0),
+                ).ok().flatten();
+
+                if let Some(kid) = keeper {
+                    // Remap installations (skip conflicts with keeper)
+                    conn.execute(
+                        "UPDATE OR IGNORE skill_installations SET skill_id = ?2 WHERE skill_id = ?1",
+                        params![dup_id, kid],
+                    ).map_err(|e| format!("M4 remap installations failed: {}", e))?;
+                    // Delete remaining installations that conflicted
+                    conn.execute("DELETE FROM skill_installations WHERE skill_id = ?1", params![dup_id])
+                        .map_err(|e| format!("M4 delete installations failed: {}", e))?;
+                    // Remap sync_logs
+                    conn.execute(
+                        "UPDATE sync_logs SET skill_id = ?2 WHERE skill_id = ?1",
+                        params![dup_id, kid],
+                    ).map_err(|e| format!("M4 remap sync_logs failed: {}", e))?;
+                }
+                // Delete the duplicate skill record
+                conn.execute("DELETE FROM skills WHERE id = ?1", params![dup_id])
+                    .map_err(|e| format!("M4 delete duplicate skill failed: {}", e))?;
+            }
+
+            // 3. Drop old UNIQUE constraint on source_path via table rebuild
+            conn.execute_batch(
+                "CREATE TABLE skills_new (
+                    id              INTEGER PRIMARY KEY,
+                    name            TEXT    NOT NULL,
+                    description     TEXT,
+                    source_path     TEXT    NOT NULL,
+                    content_hash    TEXT    NOT NULL,
+                    core_hash       TEXT    NOT NULL DEFAULT '',
+                    project_id      INTEGER NOT NULL DEFAULT 0 REFERENCES projects(id) ON DELETE CASCADE,
+                    ssot_updated_at TEXT,
+                    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                    updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(name, project_id)
+                );
+                INSERT INTO skills_new (id, name, description, source_path, content_hash, core_hash, project_id, ssot_updated_at, created_at, updated_at)
+                    SELECT id, name, description, source_path, content_hash, core_hash, project_id, ssot_updated_at, created_at, updated_at FROM skills;
+                DROP TABLE skills;
+                ALTER TABLE skills_new RENAME TO skills;
+                CREATE INDEX idx_skills_name ON skills(name);",
+            ).map_err(|e| format!("M4 rebuild skills table failed: {}", e))?;
+
+            // 4. Add installation_synced_at to skill_installations
+            let has_isa: bool = conn
+                .prepare("SELECT COUNT(*) FROM pragma_table_info('skill_installations') WHERE name = 'installation_synced_at'")
+                .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+                .map(|count| count > 0)
+                .unwrap_or(false);
+            if !has_isa {
+                conn.execute_batch(
+                    "ALTER TABLE skill_installations ADD COLUMN installation_synced_at TEXT;"
+                ).map_err(|e| format!("M4 add installation_synced_at failed: {}", e))?;
+                // Backfill from synced_at
+                conn.execute_batch(
+                    "UPDATE skill_installations SET installation_synced_at = synced_at WHERE synced_at IS NOT NULL;"
+                ).map_err(|e| format!("M4 backfill installation_synced_at failed: {}", e))?;
+            }
+
+            // 5. Create skill_conflicts table
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS skill_conflicts (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    skill_id        INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+                    detected_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                    resolved_at     TEXT,
+                    resolved_by     TEXT,
+                    detail          TEXT,
+                    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_conflicts_skill ON skill_conflicts(skill_id);
+                CREATE INDEX IF NOT EXISTS idx_conflicts_unresolved ON skill_conflicts(skill_id) WHERE resolved_at IS NULL;",
+            ).map_err(|e| format!("M4 create skill_conflicts failed: {}", e))?;
+
+            // 6. Drop old core_hash unique index (no longer needed — name is identity)
+            conn.execute_batch("DROP INDEX IF EXISTS idx_skills_core_hash;")
+                .map_err(|e| format!("M4 drop core_hash index failed: {}", e))?;
+        }
+
         Ok(())
     }
 
@@ -370,9 +490,7 @@ impl Database {
         Ok(())
     }
 
-    /// Upsert a skill with two-level dedup:
-    /// 1. source_path (primary): same location → same skill, even if content changed
-    /// 2. core_hash (secondary): same content in different location → same skill
+    /// Upsert a skill by name + project_id (name-as-identity model).
     /// Returns (skill_id, is_new).
     pub fn upsert_skill(
         &self,
@@ -381,73 +499,38 @@ impl Database {
         source_path: &str,
         content_hash: &str,
         core_hash: &str,
+        project_id: i64,
     ) -> Result<(i64, bool), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
-        // 1. Check by source_path first (same location = same skill, even if edited)
-        let existing_by_path: Option<i64> = conn
+        // Look up by (name, project_id) — the new identity
+        let existing: Option<i64> = conn
             .query_row(
-                "SELECT id FROM skills WHERE source_path = ?1",
-                params![source_path],
+                "SELECT id FROM skills WHERE name = ?1 AND project_id = ?2",
+                params![name, project_id],
                 |row| row.get(0),
             )
             .ok();
 
-        if let Some(id) = existing_by_path {
-            // Check if another skill already owns this core_hash
-            let conflict_id: Option<i64> = conn
-                .query_row(
-                    "SELECT id FROM skills WHERE core_hash = ?1 AND core_hash != '' AND id != ?2",
-                    params![core_hash, id],
-                    |row| row.get(0),
-                )
-                .ok();
-
-            if let Some(other_id) = conflict_id {
-                // Another skill has the same SKILL.md content.
-                // Merge: delete the duplicate, keep this one (by source_path).
-                conn.execute("DELETE FROM skills WHERE id = ?1", params![other_id])
-                    .map_err(|e| format!("Failed to delete duplicate skill: {}", e))?;
-            }
-
+        if let Some(id) = existing {
+            // Update existing skill record
             conn.execute(
-                "UPDATE skills SET name = ?1, description = ?2, content_hash = ?3,
-                 core_hash = ?4, updated_at = datetime('now')
+                "UPDATE skills SET description = ?1, source_path = ?2, content_hash = ?3,
+                 core_hash = ?4, ssot_updated_at = datetime('now'), updated_at = datetime('now')
                  WHERE id = ?5",
-                params![name, description, content_hash, core_hash, id],
+                params![description, source_path, content_hash, core_hash, id],
             )
             .map_err(|e| format!("Failed to update skill: {}", e))?;
             return Ok((id, false));
         }
 
-        // 2. Check by core_hash (same content in a different directory = same skill)
-        let existing_by_core: Option<i64> = conn
-            .query_row(
-                "SELECT id FROM skills WHERE core_hash = ?1 AND core_hash != ''",
-                params![core_hash],
-                |row| row.get(0),
-            )
-            .ok();
-
-        if let Some(id) = existing_by_core {
-            // Same skill content found at a different location — reuse existing record
-            // Don't overwrite source_path (keep the original location as canonical)
-            conn.execute(
-                "UPDATE skills SET name = ?1, description = ?2, content_hash = ?3,
-                 updated_at = datetime('now')
-                 WHERE id = ?4",
-                params![name, description, content_hash, id],
-            )
-            .map_err(|e| format!("Failed to update skill: {}", e))?;
-            return Ok((id, false));
-        }
-
-        // 3. Brand new skill — insert
-        let id = compute_id_hash(source_path);
+        // Brand new skill — insert
+        let id_input = format!("{}:{}", project_id, name);
+        let id = compute_id_hash(&id_input);
         conn.execute(
-            "INSERT INTO skills (id, name, description, source_path, content_hash, core_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![id, name, description, source_path, content_hash, core_hash],
+            "INSERT INTO skills (id, name, description, source_path, content_hash, core_hash, project_id, ssot_updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))",
+            params![id, name, description, source_path, content_hash, core_hash, project_id],
         )
         .map_err(|e| format!("Failed to insert skill: {}", e))?;
         Ok((id, true))
@@ -458,7 +541,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         let mut stmt = conn
-            .prepare("SELECT id, name, description, source_path, content_hash, core_hash, created_at, updated_at FROM skills ORDER BY name")
+            .prepare("SELECT id, name, description, source_path, content_hash, core_hash, project_id, ssot_updated_at, created_at, updated_at FROM skills ORDER BY name")
             .map_err(|e| format!("Prepare error: {}", e))?;
 
         let skills = stmt
@@ -470,8 +553,10 @@ impl Database {
                     source_path: row.get(3)?,
                     content_hash: row.get(4)?,
                     core_hash: row.get(5)?,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
+                    project_id: row.get(6)?,
+                    ssot_updated_at: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             })
             .map_err(|e| format!("Query error: {}", e))?
@@ -525,7 +610,7 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         conn.query_row(
-            "SELECT id, name, description, source_path, content_hash, core_hash, created_at, updated_at FROM skills WHERE id = ?1",
+            "SELECT id, name, description, source_path, content_hash, core_hash, project_id, ssot_updated_at, created_at, updated_at FROM skills WHERE id = ?1",
             params![skill_id],
             |row| {
                 Ok(Skill {
@@ -535,8 +620,10 @@ impl Database {
                     source_path: row.get(3)?,
                     content_hash: row.get(4)?,
                     core_hash: row.get(5)?,
-                    created_at: row.get(6)?,
-                    updated_at: row.get(7)?,
+                    project_id: row.get(6)?,
+                    ssot_updated_at: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             },
         )
@@ -560,82 +647,43 @@ impl Database {
     }
 
     /// List skills with installation status (SkillView)
-    /// Filters skills by source_path prefix:
-    /// - project_id=0 (Global): skills under any tool's global_path
-    /// - project_id>0 (Project): skills under the project's directory
+    /// Filters by project_id directly (name-as-identity model).
     pub fn list_skills_with_status(&self, project_id: i64) -> Result<Vec<SkillView>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
-        // Step 1: Determine path prefix(es) for filtering (normalized)
-        let path_prefixes: Vec<String> = if project_id == 0 {
-            // Global: skills whose source_path is under any tool's global_path
-            let mut stmt = conn
-                .prepare("SELECT global_path FROM tools")
-                .map_err(|e| format!("Prepare error: {}", e))?;
-            let paths: Vec<String> = stmt
-                .query_map([], |row| row.get(0))
-                .map_err(|e| format!("Query error: {}", e))?
-                .filter_map(|r| r.ok())
-                .filter_map(|p: String| scanner::expand_path(&p).ok())
-                .map(|p| scanner::normalize_path(&p))
-                .collect();
-            paths
-        } else {
-            // Project: skills whose source_path is under the project's path
-            let project_path: String = conn
-                .query_row("SELECT path FROM projects WHERE id = ?1", params![project_id], |row| row.get(0))
-                .map_err(|e| format!("Failed to get project path: {}", e))?;
-            let expanded = scanner::expand_path(&project_path)
-                .map_err(|e| format!("Failed to expand project path: {}", e))?;
-            vec![scanner::normalize_path(&expanded)]
-        };
+        // Step 1: Get skills filtered by project_id
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, description, source_path, content_hash, core_hash, project_id, ssot_updated_at, created_at, updated_at
+                 FROM skills WHERE project_id = ?1 ORDER BY name",
+            )
+            .map_err(|e| format!("Prepare error: {}", e))?;
 
-        // Step 2: Get skills filtered by path prefix
-        let skills: Vec<Skill> = if path_prefixes.is_empty() {
-            // No tools configured or no project path — return empty
-            Vec::new()
-        } else {
-            let mut all_skills: Vec<Skill> = Vec::new();
-            for prefix in &path_prefixes {
-                let pattern = format!("{}%", prefix);
-                let mut stmt = conn
-                    .prepare(
-                        "SELECT id, name, description, source_path, content_hash, core_hash, created_at, updated_at
-                         FROM skills WHERE source_path LIKE ?1 ORDER BY name",
-                    )
-                    .map_err(|e| format!("Prepare error: {}", e))?;
+        let skills: Vec<Skill> = stmt
+            .query_map(params![project_id], |row| {
+                Ok(Skill {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    source_path: row.get(3)?,
+                    content_hash: row.get(4)?,
+                    core_hash: row.get(5)?,
+                    project_id: row.get(6)?,
+                    ssot_updated_at: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
+                })
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
 
-                let matched: Vec<Skill> = stmt
-                    .query_map(params![pattern], |row| {
-                        Ok(Skill {
-                            id: row.get(0)?,
-                            name: row.get(1)?,
-                            description: row.get(2)?,
-                            source_path: row.get(3)?,
-                            content_hash: row.get(4)?,
-                            core_hash: row.get(5)?,
-                            created_at: row.get(6)?,
-                            updated_at: row.get(7)?,
-                        })
-                    })
-                    .map_err(|e| format!("Query error: {}", e))?
-                    .filter_map(|r| r.ok())
-                    .collect();
-
-                all_skills.extend(matched);
-            }
-            // Deduplicate by skill id (in case multiple prefixes match the same skill)
-            all_skills.sort_by_key(|s| s.id);
-            all_skills.dedup_by_key(|s| s.id);
-            all_skills
-        };
-
-        // Step 3: For each skill, get installation info for the given project_id
+        // Step 2: For each skill, get installation info for the given project_id
         let mut views = Vec::new();
         for skill in skills {
             let mut inst_stmt = conn
                 .prepare(
-                    "SELECT si.tool_id, t.name, si.status, si.synced_at
+                    "SELECT si.tool_id, t.name, si.status, si.synced_at, si.installation_synced_at
                      FROM skill_installations si
                      JOIN tools t ON t.id = si.tool_id
                      WHERE si.skill_id = ?1 AND si.project_id = ?2",
@@ -649,6 +697,7 @@ impl Database {
                         tool_name: row.get(1)?,
                         status: row.get(2)?,
                         synced_at: row.get(3)?,
+                        installation_synced_at: row.get(4)?,
                     })
                 })
                 .map_err(|e| format!("Query error: {}", e))?
@@ -786,12 +835,12 @@ impl Database {
         Ok(results)
     }
 
-    /// Update synced_at timestamp for an installation
+    /// Update synced_at and installation_synced_at timestamps for an installation
     pub fn update_synced_at(&self, skill_id: i64, tool_id: i64, project_id: i64) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         conn.execute(
-            "UPDATE skill_installations SET synced_at = datetime('now'), updated_at = datetime('now')
+            "UPDATE skill_installations SET synced_at = datetime('now'), installation_synced_at = datetime('now'), updated_at = datetime('now')
              WHERE skill_id = ?1 AND tool_id = ?2 AND project_id = ?3",
             params![skill_id, tool_id, project_id],
         )
@@ -801,6 +850,7 @@ impl Database {
     }
 
     /// Refresh stored hashes for a skill after sync (clears update indicator)
+    /// Also updates ssot_updated_at timestamp.
     pub fn update_skill_hashes(
         &self,
         skill_id: i64,
@@ -809,7 +859,7 @@ impl Database {
     ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         conn.execute(
-            "UPDATE skills SET content_hash = ?1, core_hash = ?2, updated_at = datetime('now')
+            "UPDATE skills SET content_hash = ?1, core_hash = ?2, ssot_updated_at = datetime('now'), updated_at = datetime('now')
              WHERE id = ?3",
             params![content_hash, core_hash, skill_id],
         )
@@ -1144,5 +1194,77 @@ impl Database {
             .collect();
 
         Ok(paths)
+    }
+
+    // ==================== M5: Conflict Management ====================
+
+    /// Insert a conflict record for a skill
+    pub fn insert_conflict(&self, skill_id: i64, detail: &str) -> Result<i64, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT INTO skill_conflicts (skill_id, detail) VALUES (?1, ?2)",
+            params![skill_id, detail],
+        )
+        .map_err(|e| format!("Failed to insert conflict: {}", e))?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// List all unresolved conflicts for a given project scope
+    pub fn list_unresolved_conflicts(&self, project_id: i64) -> Result<Vec<ConflictView>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        // Get unresolved conflicts for skills in this project
+        let mut stmt = conn.prepare(
+            "SELECT sc.id, sc.skill_id, s.name, sc.detected_at, sc.detail
+             FROM skill_conflicts sc
+             JOIN skills s ON s.id = sc.skill_id
+             WHERE sc.resolved_at IS NULL AND s.project_id = ?1
+             ORDER BY sc.detected_at DESC",
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let conflicts: Vec<(i64, i64, String, String, String)> = stmt
+            .query_map(params![project_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut views = Vec::new();
+        for (id, skill_id, skill_name, detected_at, detail) in conflicts {
+            // Parse versions from detail JSON
+            let versions: Vec<ConflictVersion> = serde_json::from_str(&detail).unwrap_or_default();
+            views.push(ConflictView {
+                id,
+                skill_id,
+                skill_name,
+                detected_at,
+                versions,
+            });
+        }
+
+        Ok(views)
+    }
+
+    /// Mark a conflict as resolved
+    pub fn resolve_conflict_record(&self, conflict_id: i64, resolved_by: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE skill_conflicts SET resolved_at = datetime('now'), resolved_by = ?1 WHERE id = ?2",
+            params![resolved_by, conflict_id],
+        )
+        .map_err(|e| format!("Failed to resolve conflict: {}", e))?;
+        Ok(())
+    }
+
+    /// Check if a skill has unresolved conflicts
+    pub fn has_unresolved_conflict(&self, skill_id: i64) -> Result<bool, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skill_conflicts WHERE skill_id = ?1 AND resolved_at IS NULL",
+            params![skill_id],
+            |row| row.get(0),
+        ).map_err(|e| format!("Query error: {}", e))?;
+        Ok(count > 0)
     }
 }

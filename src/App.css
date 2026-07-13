@@ -1507,3 +1507,102 @@ body::before {
     box-shadow: none;
   }
 }
+
+/* ==================== Conflict Banner (M5) ==================== */
+
+.conflict-banner {
+  background: var(--error-dim);
+  border: 1px solid rgba(220, 53, 69, 0.2);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+}
+
+.conflict-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.conflict-icon {
+  font-size: 18px;
+  color: var(--error);
+}
+
+.conflict-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.badge-conflict {
+  background: var(--error);
+  color: var(--text-on-accent);
+  padding: 1px 8px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.conflict-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conflict-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.conflict-skill-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.conflict-versions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ==================== Timestamps (M7) ==================== */
+
+.skill-timestamps {
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+.timestamp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.timestamp-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.timestamp-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

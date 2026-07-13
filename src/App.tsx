@@ -7,6 +7,7 @@ import "./App.css";
 import type {
   Tool, ToolTemplate, Project, SkillView, ScanResult, SyncResult,
   SkillUpdate, SkillDiff, SyncLog, Settings, Toast, InstallationInfo,
+  ConflictView,
 } from "./types";
 
 type Lang = "zh" | "en";
@@ -180,6 +181,27 @@ const translations: Record<Lang, Record<string, string>> = {
     failedDeleteProject: "删除项目失败",
     addedTools: "已添加",
     toolUnit: "个工具",
+
+    // Conflicts (M5)
+    conflicts: "冲突",
+    conflictsTitle: "Skill 冲突",
+    conflictsDesc: "不同工具对同一 Skill 有不同修改。选择保留哪个版本。",
+    noConflicts: "暂无冲突。",
+    resolveConflict: "裁决冲突",
+    keepVersion: "保留此版本",
+    resolving: "裁决中...",
+    conflictResolved: "冲突已解决",
+    failedResolve: "解决冲突失败",
+    conflictDetected: "检测到冲突",
+
+    // Timestamps (M7)
+    lastSynced: "最后同步",
+    ssotUpdated: "SSOT 更新",
+    never: "从未",
+    syncStatus: "同步状态",
+    statusInSync: "已同步",
+    statusPending: "待同步",
+    statusConflict: "有冲突",
   },
   en: {
     // Nav
@@ -349,6 +371,27 @@ const translations: Record<Lang, Record<string, string>> = {
     failedDeleteProject: "Failed to delete project",
     addedTools: "Added",
     toolUnit: "tool(s)",
+
+    // Conflicts (M5)
+    conflicts: "Conflicts",
+    conflictsTitle: "Skill Conflicts",
+    conflictsDesc: "Different tools have different versions of the same skill. Choose which to keep.",
+    noConflicts: "No conflicts detected.",
+    resolveConflict: "Resolve",
+    keepVersion: "Keep this version",
+    resolving: "Resolving...",
+    conflictResolved: "Conflict resolved",
+    failedResolve: "Failed to resolve conflict",
+    conflictDetected: "Conflict detected",
+
+    // Timestamps (M7)
+    lastSynced: "Last synced",
+    ssotUpdated: "SSOT updated",
+    never: "Never",
+    syncStatus: "Sync status",
+    statusInSync: "In sync",
+    statusPending: "Pending",
+    statusConflict: "Conflict",
   },
 };
 
@@ -432,6 +475,10 @@ function App() {
   // Sync logs
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
 
+  // Conflicts (M5)
+  const [conflicts, setConflicts] = useState<ConflictView[]>([]);
+  const [resolvingConflict, setResolvingConflict] = useState<number | null>(null);
+
   // Load data on mount
   useEffect(() => {
     loadTools();
@@ -440,6 +487,7 @@ function App() {
     loadSettings();
     loadDiscovery();
     loadTemplates();
+    loadConflicts();
   }, []);
 
   // Sync selectedProject when tab changes
@@ -459,9 +507,10 @@ function App() {
     }
   }, [activeTab, projects]);
 
-  // Reload skills when project changes
+  // Reload skills and conflicts when project changes
   useEffect(() => {
     loadSkills();
+    loadConflicts();
   }, [selectedProject]);
 
   const addToast = useCallback((type: Toast["type"], message: string) => {
@@ -529,6 +578,36 @@ function App() {
       setTemplates(await invoke<ToolTemplate[]>("list_tool_templates"));
     } catch {
       // Silent fail
+    }
+  }
+
+  async function loadConflicts() {
+    try {
+      setConflicts(await invoke<ConflictView[]>("list_conflicts", { projectId: selectedProject }));
+    } catch (e) {
+      addToast("error", `${t("failedResolve")}: ${e}`);
+    }
+  }
+
+  async function handleResolveConflict(conflictId: number, keepToolName: string) {
+    setResolvingConflict(conflictId);
+    try {
+      const result = await invoke<SyncResult>("resolve_conflict", {
+        conflictId,
+        keepToolName,
+        projectId: selectedProject,
+      });
+      if (result.errors.length > 0) {
+        addToast("error", result.errors.join(", "));
+      } else {
+        addToast("success", t("conflictResolved"));
+      }
+      await loadConflicts();
+      await loadSkills();
+    } catch (e) {
+      addToast("error", `${t("failedResolve")}: ${e}`);
+    } finally {
+      setResolvingConflict(null);
     }
   }
 
@@ -1334,6 +1413,39 @@ function App() {
         </div>
       </section>
 
+      {/* Conflict Banner (M5) */}
+      {conflicts.length > 0 && (
+        <section className="section">
+          <div className="conflict-banner">
+            <div className="conflict-header">
+              <span className="conflict-icon">⚠</span>
+              <span className="conflict-title">{t("conflictsTitle")}</span>
+              <span className="badge badge-conflict">{conflicts.length}</span>
+            </div>
+            <p className="conflict-desc">{t("conflictsDesc")}</p>
+            <div className="conflict-list">
+              {conflicts.map((c) => (
+                <div key={c.id} className="conflict-item">
+                  <span className="conflict-skill-name">{c.skill_name}</span>
+                  <div className="conflict-versions">
+                    {c.versions.map((v) => (
+                      <button
+                        key={v.tool_id}
+                        className={`btn btn-small ${resolvingConflict === c.id ? "" : "btn-secondary"}`}
+                        disabled={resolvingConflict !== null}
+                        onClick={() => handleResolveConflict(c.id, v.tool_name)}
+                      >
+                        {resolvingConflict === c.id ? t("resolving") : `${t("keepVersion")}: ${v.tool_name}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Skill grid */}
       <section className="section">
         <h2 className="section-title">
@@ -1371,6 +1483,14 @@ function App() {
                 {skill.description && <p className="skill-desc">{skill.description}</p>}
 
                 <code className="skill-path">{skill.source_path}</code>
+
+                {/* Timestamp info (M7) */}
+                <div className="skill-timestamps">
+                  <span className="timestamp-row">
+                    <span className="timestamp-label">{t("ssotUpdated")}:</span>
+                    <span className="timestamp-value">{skill.ssot_updated_at || t("never")}</span>
+                  </span>
+                </div>
 
                 {/* Tool toggles */}
                 <div className="skill-tools">

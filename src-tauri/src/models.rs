@@ -23,7 +23,7 @@ pub struct Project {
     pub created_at: String,
 }
 
-/// A discovered skill
+/// A discovered skill — identity is (name, project_id)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Skill {
     pub id: i64,
@@ -32,6 +32,8 @@ pub struct Skill {
     pub source_path: String,
     pub content_hash: String,
     pub core_hash: String,
+    pub project_id: i64,
+    pub ssot_updated_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -53,6 +55,7 @@ pub struct InstallationInfo {
     pub tool_name: String,
     pub status: String,
     pub synced_at: Option<String>,
+    pub installation_synced_at: Option<String>,
 }
 
 /// Result of a sync operation
@@ -120,4 +123,25 @@ pub struct DiscoveredSkill {
     pub source_path: String,
     pub content_hash: String,
     pub core_hash: String,
+}
+
+// ==================== M5: Conflict types ====================
+
+/// A version of a conflicted skill from a specific tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictVersion {
+    pub tool_id: i64,
+    pub tool_name: String,
+    pub core_hash: String,
+    pub source_path: String,
+}
+
+/// An unresolved conflict for a skill
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictView {
+    pub id: i64,
+    pub skill_id: i64,
+    pub skill_name: String,
+    pub detected_at: String,
+    pub versions: Vec<ConflictVersion>,
 }
