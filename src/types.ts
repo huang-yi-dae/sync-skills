@@ -77,6 +77,7 @@ export interface SkillUpdate {
   old_hash: string;
   new_hash: string;
   changed_tool: string | null;
+  changed_tool_id: number | null;
 }
 
 export interface SyncLog {

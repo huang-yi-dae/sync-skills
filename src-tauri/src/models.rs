@@ -77,6 +77,8 @@ pub struct SkillUpdate {
     pub new_hash: String,
     /// Which tool directory has the change (None if source_path changed)
     pub changed_tool: Option<String>,
+    /// The tool's DB ID (for dismiss operations)
+    pub changed_tool_id: Option<i64>,
 }
 
 /// A sync log entry

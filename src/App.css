@@ -288,6 +288,7 @@ body::before {
   gap: 2px;
 }
 
+.project-edit,
 .project-delete {
   background: transparent;
   border: none;
@@ -300,9 +301,20 @@ body::before {
   transition: all 0.15s;
 }
 
+.project-edit:hover {
+  color: var(--info);
+  background: var(--info-dim);
+}
+
 .project-delete:hover {
   color: var(--error);
   background: var(--error-dim);
+}
+
+.conflict-version-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .project-empty-hint {

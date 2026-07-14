@@ -373,6 +373,21 @@ impl Database {
                 .map_err(|e| format!("M4 drop core_hash index failed: {}", e))?;
         }
 
+        // Create dismissed_updates table (for ignoring specific tool changes)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS dismissed_updates (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                skill_id        INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+                tool_id         INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+                dismissed_hash  TEXT    NOT NULL,
+                dismissed_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(skill_id, tool_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_dismissed_skill ON dismissed_updates(skill_id);
+            CREATE INDEX IF NOT EXISTS idx_dismissed_tool ON dismissed_updates(tool_id);",
+        )
+        .map_err(|e| format!("Failed to create dismissed_updates table: {}", e))?;
+
         Ok(())
     }
 
@@ -867,6 +882,22 @@ impl Database {
         Ok(())
     }
 
+    /// Update the stored source_path for a skill (e.g., after sync points to SSOT).
+    pub fn update_skill_source_path(
+        &self,
+        skill_id: i64,
+        source_path: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE skills SET source_path = ?1, updated_at = datetime('now')
+             WHERE id = ?2",
+            params![source_path, skill_id],
+        )
+        .map_err(|e| format!("Failed to update skill source_path: {}", e))?;
+        Ok(())
+    }
+
     /// Get all active installation paths for a skill across ALL projects.
     /// Returns Vec<(tool_id, tool_name, absolute_path)>.
     pub fn get_all_active_paths(&self, skill_id: i64) -> Result<Vec<(i64, String, String)>, String> {
@@ -1152,6 +1183,33 @@ impl Database {
         Ok(())
     }
 
+    /// Update a project's name and/or path
+    pub fn update_project(&self, project_id: i64, name: &str, path: &str) -> Result<(), String> {
+        if project_id == 0 {
+            return Err("Cannot modify the Global project".to_string());
+        }
+
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        // Check path uniqueness (exclude self)
+        let exists: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM projects WHERE path = ?1 AND id != ?2",
+            params![path, project_id],
+            |row| row.get(0),
+        ).map_err(|e| format!("Failed to check path uniqueness: {}", e))?;
+        if exists {
+            return Err("Another project with this path already exists".to_string());
+        }
+
+        conn.execute(
+            "UPDATE projects SET name = ?1, path = ?2 WHERE id = ?3",
+            params![name, path, project_id],
+        )
+        .map_err(|e| format!("Failed to update project: {}", e))?;
+
+        Ok(())
+    }
+
     /// Get a project's path by ID
     pub fn get_project_path(&self, project_id: i64) -> Result<String, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -1266,5 +1324,50 @@ impl Database {
             |row| row.get(0),
         ).map_err(|e| format!("Query error: {}", e))?;
         Ok(count > 0)
+    }
+
+    // ==================== Dismissed Updates ====================
+
+    /// Record that a specific tool's change for a skill has been dismissed.
+    /// Stores the current hash so the dismissal is invalidated if the file changes again.
+    pub fn dismiss_update(&self, skill_id: i64, tool_id: i64, hash: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT INTO dismissed_updates (skill_id, tool_id, dismissed_hash)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(skill_id, tool_id) DO UPDATE SET
+                dismissed_hash = ?3,
+                dismissed_at = datetime('now')",
+            params![skill_id, tool_id, hash],
+        )
+        .map_err(|e| format!("Failed to dismiss update: {}", e))?;
+        Ok(())
+    }
+
+    /// Check if a specific tool's change for a skill is currently dismissed.
+    /// Returns true if the dismissed hash matches the current hash (same change).
+    pub fn is_update_dismissed(&self, skill_id: i64, tool_id: i64, current_hash: &str) -> Result<bool, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let result: Option<String> = conn.query_row(
+            "SELECT dismissed_hash FROM dismissed_updates WHERE skill_id = ?1 AND tool_id = ?2",
+            params![skill_id, tool_id],
+            |row| row.get(0),
+        ).ok();
+
+        match result {
+            Some(dismissed_hash) => Ok(dismissed_hash == current_hash),
+            None => Ok(false),
+        }
+    }
+
+    /// Clear all dismissed updates for a skill (e.g., after sync or new scan)
+    pub fn clear_dismissed_updates_for_skill(&self, skill_id: i64) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "DELETE FROM dismissed_updates WHERE skill_id = ?1",
+            params![skill_id],
+        )
+        .map_err(|e| format!("Failed to clear dismissed updates: {}", e))?;
+        Ok(())
     }
 }

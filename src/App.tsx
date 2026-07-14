@@ -202,6 +202,23 @@ const translations: Record<Lang, Record<string, string>> = {
     statusInSync: "已同步",
     statusPending: "待同步",
     statusConflict: "有冲突",
+
+    // Project edit
+    editProject: "编辑项目",
+    editProjectTitle: "编辑项目",
+    projectUpdated: "项目已更新",
+    failedUpdateProject: "更新项目失败",
+
+    // Reverse sync & dismiss
+    revertToSsot: "用 SSOT 覆盖",
+    reverting: "覆盖中...",
+    revertedToSsot: "已用 SSOT 版本覆盖",
+    failedRevert: "覆盖失败",
+    dismissChange: "忽略此更改",
+    dismissed: "已忽略",
+
+    // Conflict diff
+    comparingVersions: "版本对比",
   },
   en: {
     // Nav
@@ -392,6 +409,23 @@ const translations: Record<Lang, Record<string, string>> = {
     statusInSync: "In sync",
     statusPending: "Pending",
     statusConflict: "Conflict",
+
+    // Project edit
+    editProject: "Edit project",
+    editProjectTitle: "Edit Project",
+    projectUpdated: "Project updated",
+    failedUpdateProject: "Failed to update project",
+
+    // Reverse sync & dismiss
+    revertToSsot: "Overwrite from SSOT",
+    reverting: "Overwriting...",
+    revertedToSsot: "Overwritten with SSOT version",
+    failedRevert: "Overwrite failed",
+    dismissChange: "Dismiss this change",
+    dismissed: "Dismissed",
+
+    // Conflict diff
+    comparingVersions: "Comparing Versions",
   },
 };
 
@@ -471,6 +505,9 @@ function App() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editProjectName, setEditProjectName] = useState("");
+  const [editProjectPath, setEditProjectPath] = useState("");
 
   // Sync logs
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -478,6 +515,9 @@ function App() {
   // Conflicts (M5)
   const [conflicts, setConflicts] = useState<ConflictView[]>([]);
   const [resolvingConflict, setResolvingConflict] = useState<number | null>(null);
+  const [conflictDiff, setConflictDiff] = useState<{ conflictId: number; diff: SkillDiff; toolName: string } | null>(null);
+  const [loadingConflictDiff, setLoadingConflictDiff] = useState<number | null>(null);
+  const [reversingSync, setReversingSync] = useState<number | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -719,7 +759,7 @@ function App() {
       const result = await invoke<SkillUpdate | null>("check_skill_update", { skillId });
       if (result) {
         // Found update — open diff view
-        const diff = await invoke<SkillDiff>("get_skill_diff", { skillId });
+        const diff = await invoke<SkillDiff>("get_skill_diff", { skillId, sourcePath: result.source_path });
         setSelectedUpdateDiff({ update: result, diff });
         setUpdates((prev) => {
           const filtered = prev.filter((u) => u.skill_id !== skillId);
@@ -739,7 +779,7 @@ function App() {
   async function handleViewDiff(update: SkillUpdate) {
     setLoadingDiff(update.skill_id);
     try {
-      const diff = await invoke<SkillDiff>("get_skill_diff", { skillId: update.skill_id });
+      const diff = await invoke<SkillDiff>("get_skill_diff", { skillId: update.skill_id, sourcePath: update.source_path });
       setSelectedUpdateDiff({ update, diff });
     } catch (e) {
       addToast("error", `${t("failedLoadDiff")}: ${e}`);
@@ -750,7 +790,7 @@ function App() {
 
   async function handleUpdateFromDiff(skillId: number) {
     try {
-      await invoke("sync_skill", { skillId, projectId: null });
+      await invoke("sync_skill", { skillId, projectId: null, sourcePath: selectedUpdateDiff?.update.source_path ?? null });
       addToast("success", t("skillUpdated"));
       setSelectedUpdateDiff(null);
       // Remove from updates list
@@ -976,6 +1016,84 @@ function App() {
       addToast("success", `${t("projectDeleted")} "${projectName}"`);
     } catch (e) {
       addToast("error", `${t("failedDeleteProject")}: ${e}`);
+    }
+  }
+
+  function handleEditProject(project: Project) {
+    setEditingProject(project);
+    setEditProjectName(project.name);
+    setEditProjectPath(project.path);
+  }
+
+  async function handleSaveProjectEdit() {
+    if (!editingProject) return;
+    if (!editProjectName.trim() || !editProjectPath.trim()) {
+      addToast("error", t("nameAndPathRequiredProject"));
+      return;
+    }
+    try {
+      await invoke("update_project", {
+        projectId: editingProject.id,
+        name: editProjectName.trim(),
+        path: editProjectPath.trim(),
+      });
+      setEditingProject(null);
+      await loadProjects();
+      addToast("success", t("projectUpdated"));
+    } catch (e) {
+      addToast("error", `${t("failedUpdateProject")}: ${e}`);
+    }
+  }
+
+  async function handleReverseSync(skillId: number, toolId: number) {
+    setReversingSync(skillId);
+    try {
+      const result = await invoke<SyncResult>("reverse_sync_skill", {
+        skillId,
+        toolId,
+        projectId: selectedProject,
+      });
+      if (result.errors.length > 0) {
+        addToast("error", result.errors.join(", "));
+      } else {
+        addToast("success", t("revertedToSsot"));
+      }
+      setUpdates((prev) => prev.filter((u) => u.skill_id !== skillId));
+      await loadSkills();
+    } catch (e) {
+      addToast("error", `${t("failedRevert")}: ${e}`);
+    } finally {
+      setReversingSync(null);
+    }
+  }
+
+  async function handleDismissUpdate(update: SkillUpdate) {
+    if (!update.changed_tool_id) return;
+    try {
+      await invoke("dismiss_skill_update", {
+        skillId: update.skill_id,
+        toolId: update.changed_tool_id,
+        currentHash: update.new_hash,
+      });
+      setUpdates((prev) => prev.filter((u) => u.skill_id !== update.skill_id));
+      addToast("info", t("dismissed"));
+    } catch (e) {
+      addToast("error", `${t("failedRevert")}: ${e}`);
+    }
+  }
+
+  async function handleViewConflictDiff(conflictId: number, version: { tool_id: number; tool_name: string; source_path: string }) {
+    setLoadingConflictDiff(conflictId);
+    try {
+      const diff = await invoke<SkillDiff>("get_skill_diff", {
+        skillId: conflictId,
+        sourcePath: version.source_path,
+      });
+      setConflictDiff({ conflictId, diff, toolName: version.tool_name });
+    } catch (e) {
+      addToast("error", `${t("failedLoadDiff")}: ${e}`);
+    } finally {
+      setLoadingConflictDiff(null);
     }
   }
 
@@ -1228,6 +1346,13 @@ function App() {
                 {p.name}
               </button>
               <button
+                className="project-edit"
+                onClick={() => handleEditProject(p)}
+                title={t("editProject")}
+              >
+                ✎
+              </button>
+              <button
                 className="project-delete"
                 onClick={() => handleDeleteProject(p.id, p.name)}
                 title={t("deleteProject")}
@@ -1273,6 +1398,37 @@ function App() {
             <div className="modal-actions">
               <button className="btn btn-primary" onClick={handleAddProject}>{t("add")}</button>
               <button className="btn btn-secondary" onClick={() => setShowAddProject(false)}>{t("cancel")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit project dialog */}
+      {editingProject && (
+        <div className="modal-overlay" onClick={() => setEditingProject(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{t("editProjectTitle")}</h3>
+            <div className="form-group">
+              <label>{t("nameLabel")}</label>
+              <input
+                type="text"
+                value={editProjectName}
+                onChange={(e) => setEditProjectName(e.target.value)}
+                className="edit-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>{t("pathLabel")}</label>
+              <input
+                type="text"
+                value={editProjectPath}
+                onChange={(e) => setEditProjectPath(e.target.value)}
+                className="edit-input"
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={handleSaveProjectEdit}>{t("save")}</button>
+              <button className="btn btn-secondary" onClick={() => setEditingProject(null)}>{t("cancel")}</button>
             </div>
           </div>
         </div>
@@ -1429,14 +1585,22 @@ function App() {
                   <span className="conflict-skill-name">{c.skill_name}</span>
                   <div className="conflict-versions">
                     {c.versions.map((v) => (
-                      <button
-                        key={v.tool_id}
-                        className={`btn btn-small ${resolvingConflict === c.id ? "" : "btn-secondary"}`}
-                        disabled={resolvingConflict !== null}
-                        onClick={() => handleResolveConflict(c.id, v.tool_name)}
-                      >
-                        {resolvingConflict === c.id ? t("resolving") : `${t("keepVersion")}: ${v.tool_name}`}
-                      </button>
+                      <div key={v.tool_id} className="conflict-version-group">
+                        <button
+                          className={`btn btn-small ${resolvingConflict === c.id ? "" : "btn-secondary"}`}
+                          disabled={resolvingConflict !== null}
+                          onClick={() => handleResolveConflict(c.id, v.tool_name)}
+                        >
+                          {resolvingConflict === c.id ? t("resolving") : `${t("keepVersion")}: ${v.tool_name}`}
+                        </button>
+                        <button
+                          className="btn btn-small"
+                          disabled={loadingConflictDiff === c.id}
+                          onClick={() => handleViewConflictDiff(c.id, v)}
+                        >
+                          {loadingConflictDiff === c.id ? t("loading") : t("viewDiff")}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1444,6 +1608,49 @@ function App() {
             </div>
           </div>
         </section>
+      )}
+
+      {/* Conflict Diff Modal */}
+      {conflictDiff && (
+        <div className="modal-overlay" onClick={() => setConflictDiff(null)}>
+          <div className="modal updates-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="diff-header">
+              <button className="btn btn-small" onClick={() => setConflictDiff(null)}>&larr; {t("back")}</button>
+              <h3 className="diff-title">{t("comparingVersions")}: {conflictDiff.toolName}</h3>
+            </div>
+            <div className="diff-files">
+              {conflictDiff.diff.files.map((file, fi) => (
+                <div key={fi} className="diff-file">
+                  <div className={`diff-file-header diff-file-${file.change}`}>
+                    <span className="diff-change-badge">{file.change}</span>
+                    <span className="diff-file-path">{file.path}</span>
+                  </div>
+                  {file.hunks.map((hunk, hi) => (
+                    <div key={hi} className="diff-hunk">
+                      <div className="diff-hunk-header">
+                        @@ -{hunk.old_start},{hunk.old_count} +{hunk.new_start},{hunk.new_count} @@
+                      </div>
+                      <pre className="diff-lines">
+                        {hunk.lines.map((line, li) => (
+                          <div key={li} className={`diff-line diff-line-${line.op === "+" ? "add" : line.op === "-" ? "del" : "ctx"}`}>
+                            <span className="diff-line-op">{line.op === " " ? "\u00a0" : line.op}</span>
+                            <span className="diff-line-content">{line.content}</span>
+                          </div>
+                        ))}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {!conflictDiff.diff.has_changes && (
+                <div className="diff-no-changes">{t("noChanges")}</div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConflictDiff(null)}>{t("close")}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Skill grid */}
@@ -1648,12 +1855,29 @@ function App() {
                   >
                     {t("updateToSsot")}
                   </button>
+                  {selectedUpdateDiff.update.changed_tool_id && (
+                    <button
+                      className="btn btn-secondary"
+                      disabled={reversingSync === selectedUpdateDiff.update.skill_id}
+                      onClick={() => handleReverseSync(selectedUpdateDiff.update.skill_id, selectedUpdateDiff.update.changed_tool_id!)}
+                    >
+                      {reversingSync === selectedUpdateDiff.update.skill_id ? t("reverting") : t("revertToSsot")}
+                    </button>
+                  )}
                   <button
                     className="btn btn-secondary"
                     onClick={() => handleSkipUpdate(selectedUpdateDiff.update.skill_id)}
                   >
                     {t("skip")}
                   </button>
+                  {selectedUpdateDiff.update.changed_tool_id && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleDismissUpdate(selectedUpdateDiff.update)}
+                    >
+                      {t("dismissChange")}
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
@@ -1686,6 +1910,14 @@ function App() {
                         >
                           {t("skip")}
                         </button>
+                        {u.changed_tool_id && (
+                          <button
+                            className="btn btn-small"
+                            onClick={() => handleDismissUpdate(u)}
+                          >
+                            {t("dismissChange")}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

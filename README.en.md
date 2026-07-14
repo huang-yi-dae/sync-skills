@@ -39,7 +39,10 @@ Skill Manager provides a desktop GUI to manage all your skills in one place and 
 - **Tool Management** — Register AI coding tool paths with auto-discovery for 13+ known tools
 - **Skill Scanning** — Recursively scan directories to discover all `SKILL.md`-based skill directories
 - **SSOT Sync** — Hub-and-spoke model centered on `~/.agents/skills/local/`, distributing to all tools
-- **Project-level Management** — Configure independent skill sets per project
+- **Reverse Sync** — Push SSOT content to a specific tool directory, overwriting local changes
+- **Conflict Management** — Detect version conflicts between tools with diff preview and resolution
+- **Change Dismissal** — Persistently ignore specific tool changes until content changes again
+- **Project-level Management** — Configure independent skill sets per project, with edit support
 - **Diff Detection** — Built-in LCS unified diff view showing precise file-level changes
 - **Theme Switching** — Light / Dark / Follow System
 - **i18n** — 中文 / English
@@ -107,7 +110,7 @@ sync-skills/
 │   └── main.tsx            # Entry point
 ├── src-tauri/
 │   └── src/
-│       ├── lib.rs          # IPC command entry (22 commands)
+│       ├── lib.rs          # IPC command entry (25 commands)
 │       ├── db.rs           # SQLite data layer
 │       ├── scanner.rs      # Skill directory scanner
 │       ├── sync.rs         # File sync engine
@@ -134,7 +137,8 @@ npx tsc --noEmit               # TypeScript type check
 | v0.1.0 | ✅ Done | Core: tool management, skill scanning, SSOT sync, project management |
 | v0.2.0 | ✅ Done | Auto-discovery, sorting/filtering, diff detection, diff view |
 | v0.3.0 | ✅ Done | Theme switching, i18n, hash stability fixes |
-| v0.4.0 | Planned | Skill editor, remote sync, plugin system |
+| v0.4.0 | ✅ Done | Name-as-identity, conflict detection/resolution, timestamps, project edit, reverse sync, change dismissal |
+| v0.5.0 | Planned | LockManager integration, core_hash change detection, file watcher |
 
 ## License
 

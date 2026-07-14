@@ -182,12 +182,13 @@ fn do_sync_skill(
     skill_id: i64,
     project_id: i64,
     prefer_symlink: bool,
+    source_override: Option<&str>,
 ) -> Result<SyncResult, String> {
     let skill = db.get_skill_by_id(skill_id)?;
-    let source = PathBuf::from(&skill.source_path);
+    let source = PathBuf::from(source_override.unwrap_or(&skill.source_path));
 
     if !source.exists() {
-        return Err(format!("Source path does not exist: {}", skill.source_path));
+        return Err(format!("Source path does not exist: {}", source.display()));
     }
 
     // Ensure SSOT directory exists
@@ -284,14 +285,17 @@ fn do_sync_skill(
         }
     }
 
-    // After successful sync, refresh stored hashes from source
+    // After successful sync, refresh stored hashes from SSOT (the canonical copy)
     // so check_updates doesn't flag it as "needs update" anymore
     if synced_to > 0 || ssot_target.exists() {
-        if let Ok(new_content_hash) = hash::compute_content_hash(&source) {
-            let skill_md = source.join("SKILL.md");
+        if let Ok(new_content_hash) = hash::compute_content_hash(&ssot_target) {
+            let skill_md = ssot_target.join("SKILL.md");
             let new_core_hash = hash::compute_core_hash(&skill_md).unwrap_or_default();
             let _ = db.update_skill_hashes(skill_id, &new_content_hash, &new_core_hash);
         }
+        // Update source_path to SSOT so future operations use the canonical location
+        let ssot_str = ssot_target.to_string_lossy().to_string();
+        let _ = db.update_skill_source_path(skill_id, &ssot_str);
     }
 
     Ok(SyncResult {
@@ -432,13 +436,14 @@ async fn sync_skill(
     db: State<'_, DbState>,
     skill_id: i64,
     project_id: Option<i64>,
+    source_path: Option<String>,
 ) -> Result<SyncResult, String> {
     let db = db.inner().clone();
     let settings = Settings::load();
     let pid = project_id.unwrap_or(0);
 
     tokio::task::spawn_blocking(move || -> Result<SyncResult, String> {
-        do_sync_skill(&db, skill_id, pid, settings.prefer_symlink)
+        do_sync_skill(&db, skill_id, pid, settings.prefer_symlink, source_path.as_deref())
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -459,7 +464,7 @@ async fn sync_all_pending(db: State<'_, DbState>) -> Result<Vec<SyncResult>, Str
             for skill in &skills {
                 let installations = db.get_active_installations(skill.id, project.id)?;
                 if !installations.is_empty() {
-                    match do_sync_skill(&db, skill.id, project.id, settings.prefer_symlink) {
+                    match do_sync_skill(&db, skill.id, project.id, settings.prefer_symlink, None) {
                         Ok(result) => results.push(result),
                         Err(e) => {
                             results.push(SyncResult {
@@ -495,7 +500,7 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
 
     // Check all active installation paths against SSOT
     if let Ok(installations) = db.get_all_active_paths(skill_id) {
-        for (_tool_id, tool_name, install_path) in &installations {
+        for (tool_id, tool_name, install_path) in &installations {
             let path = PathBuf::from(install_path);
             if !path.exists() {
                 continue;
@@ -505,6 +510,10 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
                 match &ssot_hash {
                     Some(sh) if *sh == install_hash => continue, // in sync
                     _ => {
+                        // Check if this change was dismissed (same hash = still dismissed)
+                        if db.is_update_dismissed(skill_id, *tool_id, &install_hash).unwrap_or(false) {
+                            continue;
+                        }
                         // This tool directory differs from SSOT
                         let old_hash = ssot_hash.clone().unwrap_or_default();
                         return Ok(Some(SkillUpdate {
@@ -514,6 +523,7 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
                             old_hash,
                             new_hash: install_hash,
                             changed_tool: Some(tool_name.clone()),
+                            changed_tool_id: Some(*tool_id),
                         }));
                     }
                 }
@@ -536,6 +546,7 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
                         old_hash,
                         new_hash: source_hash,
                         changed_tool: None,
+                        changed_tool_id: None,
                     }));
                 }
             }
@@ -593,12 +604,15 @@ async fn check_skill_update(
 async fn get_skill_diff(
     db: State<'_, DbState>,
     skill_id: i64,
+    source_path: Option<String>,
 ) -> Result<SkillDiff, String> {
     let db = db.inner().clone();
 
     tokio::task::spawn_blocking(move || -> Result<SkillDiff, String> {
         let skill = db.get_skill_by_id(skill_id)?;
-        let source = PathBuf::from(&skill.source_path);
+        let source = PathBuf::from(
+            source_path.as_deref().unwrap_or(&skill.source_path),
+        );
         let ssot = sync::ssot_path(&skill.name)?;
 
         diff::compute_skill_diff(&source, &ssot, &skill.name)
@@ -689,12 +703,15 @@ async fn resolve_conflict(
             }
         }
 
-        // Refresh hashes
-        if let Ok(new_content_hash) = hash::compute_content_hash(&source) {
-            let skill_md = source.join("SKILL.md");
+        // Refresh hashes from SSOT (the canonical copy after conflict resolution)
+        if let Ok(new_content_hash) = hash::compute_content_hash(&ssot_target) {
+            let skill_md = ssot_target.join("SKILL.md");
             let new_core_hash = hash::compute_core_hash(&skill_md).unwrap_or_default();
             let _ = db.update_skill_hashes(skill_id, &new_content_hash, &new_core_hash);
         }
+        // Update source_path to SSOT
+        let ssot_str = ssot_target.to_string_lossy().to_string();
+        let _ = db.update_skill_source_path(skill_id, &ssot_str);
 
         // Mark conflict as resolved
         db.resolve_conflict_record(conflict_id, &keep_tool_name)?;
@@ -708,6 +725,90 @@ async fn resolve_conflict(
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+// ==================== Reverse Sync & Dismiss ====================
+
+/// Push SSOT content to a specific tool directory (overwrite tool with SSOT version).
+#[tauri::command]
+async fn reverse_sync_skill(
+    db: State<'_, DbState>,
+    skill_id: i64,
+    tool_id: i64,
+    project_id: Option<i64>,
+) -> Result<SyncResult, String> {
+    let db = db.inner().clone();
+    let pid = project_id.unwrap_or(0);
+
+    tokio::task::spawn_blocking(move || -> Result<SyncResult, String> {
+        let skill = db.get_skill_by_id(skill_id)?;
+        let ssot = sync::ssot_path(&skill.name)?;
+
+        if !ssot.exists() {
+            return Err("SSOT directory does not exist. Sync to SSOT first.".to_string());
+        }
+
+        // Find the target tool's installation directory
+        let installations = db.get_all_active_paths(skill_id)?;
+        let mut synced_to = 0usize;
+        let mut errors = Vec::new();
+
+        for (tid, _tool_name, install_path) in &installations {
+            if *tid != tool_id {
+                continue;
+            }
+            let target = PathBuf::from(install_path);
+            let result = if target.exists() {
+                sync::replace_directory(&ssot, &target)
+            } else {
+                sync::copy_directory(&ssot, &target)
+            };
+
+            match result {
+                Ok(_) => {
+                    db.update_synced_at(skill_id, *tid, pid)?;
+                    db.insert_sync_log(skill_id, *tid, pid, "reverse_sync", "success", None)?;
+                    synced_to += 1;
+                }
+                Err(e) => {
+                    errors.push(format!("Tool {}: {}", tid, e));
+                    db.insert_sync_log(skill_id, *tid, pid, "reverse_sync", "failed", Some(&e))?;
+                }
+            }
+        }
+
+        // Refresh hashes from SSOT and clear dismissed updates
+        if synced_to > 0 {
+            if let Ok(new_content_hash) = hash::compute_content_hash(&ssot) {
+                let skill_md = ssot.join("SKILL.md");
+                let new_core_hash = hash::compute_core_hash(&skill_md).unwrap_or_default();
+                let _ = db.update_skill_hashes(skill_id, &new_content_hash, &new_core_hash);
+            }
+            let _ = db.clear_dismissed_updates_for_skill(skill_id);
+        }
+
+        Ok(SyncResult {
+            skill_id,
+            skill_name: skill.name,
+            synced_to,
+            errors,
+        })
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Dismiss a specific tool's change for a skill (ignore this update).
+#[tauri::command]
+async fn dismiss_skill_update(
+    db: State<'_, DbState>,
+    skill_id: i64,
+    tool_id: i64,
+    current_hash: String,
+) -> Result<(), String> {
+    let db = db.inner().clone();
+    db.dismiss_update(skill_id, tool_id, &current_hash)
+        .map_err(|e| format!("Failed to dismiss update: {}", e))
 }
 
 // ==================== Settings Commands (M2) ====================
@@ -742,6 +843,13 @@ fn delete_project(db: State<DbState>, project_id: i64) -> Result<(), String> {
     let project_name = db.get_project_name(project_id).unwrap_or_else(|_| format!("id={}", project_id));
     db.delete_project(project_id)?;
     let _ = db.insert_action_log("delete_project", None, None, 0, "success", Some(&project_name));
+    Ok(())
+}
+
+#[tauri::command]
+fn update_project(db: State<DbState>, project_id: i64, name: String, path: String) -> Result<(), String> {
+    db.update_project(project_id, &name, &path)?;
+    let _ = db.insert_action_log("edit_project", None, None, project_id, "success", Some(&format!("{} ({})", name, path)));
     Ok(())
 }
 
@@ -797,11 +905,15 @@ pub fn run() {
             list_projects,
             add_project,
             delete_project,
+            update_project,
             // Sync Logs (M3)
             get_sync_logs,
             // Conflicts (M5)
             list_conflicts,
             resolve_conflict,
+            // Reverse sync & dismiss
+            reverse_sync_skill,
+            dismiss_skill_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

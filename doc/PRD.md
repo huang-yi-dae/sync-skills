@@ -1,4 +1,4 @@
-# Skill Manager - MVP PRD
+# Skill Manager MVP — 产品需求文档
 
 ## 1. 产品概述
 
@@ -454,6 +454,7 @@ Rust 后端通过 `#[tauri::command]` 暴露以下接口给 React 前端：
 |---------|------|------|------|
 | `list_projects` | - | `Vec<Project>` | 获取所有项目 |
 | `add_project` | `name, path` | `Result<Project>` | 添加项目，触发扫描 |
+| `update_project` | `project_id, name, path` | `Result<()>` | 修改项目名称和路径 |
 | `delete_project` | `project_id` | `Result<()>` | 删除项目（级联删除） |
 
 #### Skill 管理
@@ -462,8 +463,14 @@ Rust 后端通过 `#[tauri::command]` 暴露以下接口给 React 前端：
 |---------|------|------|------|
 | `list_skills` | `project_id?` | `Vec<SkillView>` | 获取 Skill 列表（含安装状态） |
 | `toggle_skill` | `skill_id, tool_id, project_id, active` | `Result<()>` | 启用/禁用 Skill |
-| `sync_skill` | `skill_id` | `Result<SyncResult>` | 手动同步单个 Skill |
+| `sync_skill` | `skill_id, project_id?, source_path?` | `Result<SyncResult>` | 手动同步（source_path 指定变更来源） |
+| `reverse_sync_skill` | `skill_id, tool_id, project_id?` | `Result<SyncResult>` | 反向同步：SSOT → 指定工具目录 |
 | `check_updates` | `project_id?` | `Vec<SkillUpdate>` | 检查所有 Skill 更新 |
+| `check_skill_update` | `skill_id` | `Option<SkillUpdate>` | 检查单个 Skill 更新 |
+| `get_skill_diff` | `skill_id, source_path?` | `SkillDiff` | 获取 diff（source_path 指定对比来源） |
+| `dismiss_skill_update` | `skill_id, tool_id, current_hash` | `Result<()>` | 忽略某工具的变更 |
+| `list_conflicts` | `project_id?` | `Vec<ConflictView>` | 获取未解决冲突列表 |
+| `resolve_conflict` | `conflict_id, keep_tool_name, project_id?` | `Result<SyncResult>` | 裁决冲突（保留指定版本） |
 
 #### 扫描与同步
 
@@ -622,7 +629,7 @@ Rust 后端通过 `#[tauri::command]` 暴露以下接口给 React 前端：
 
 ## 附录 B：参考资料
 
-- 设计讨论文档：`doc/map.md`
+- 设计讨论文档：`doc/design-discussion.md`
 - 数据库 DDL：`doc/skill-manager-ddl.sql`
 - Tauri v2 官方文档：https://v2.tauri.app/
 - Tauri v2 SQL 插件：https://v2.tauri.app/plugin/sql/

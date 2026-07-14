@@ -1,4 +1,4 @@
-# Session 记录：Skill 管理工具设计讨论
+# Skill Manager 设计讨论记录
 
 ---
 
