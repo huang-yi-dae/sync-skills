@@ -186,8 +186,9 @@ fn compute_unified_diff(old_text: &str, new_text: &str) -> Vec<DiffHunk> {
     let old_lines: Vec<&str> = old_text.lines().collect();
     let new_lines: Vec<&str> = new_text.lines().collect();
 
-    // For very large files (>500 lines combined), use a simple full-replace hunk
-    if old_lines.len() + new_lines.len() > 500 {
+    // For very large files (>5000 lines combined), use a simple full-replace hunk
+    // to avoid O(m*n) LCS memory/time costs.
+    if old_lines.len() + new_lines.len() > 5000 {
         return make_full_replace(&old_lines, &new_lines);
     }
 

@@ -79,8 +79,26 @@ fn scan_tool_paths(
     // Group by skill name — name-as-identity: same name = same skill
     let mut by_name: std::collections::HashMap<String, Vec<(i64, models::DiscoveredSkill)>> =
         std::collections::HashMap::new();
-    for (tool_id, skill) in all_skills {
-        by_name.entry(skill.name.clone()).or_default().push((tool_id, skill));
+    for (tool_id, skill) in &all_skills {
+        by_name.entry(skill.name.clone()).or_default().push((*tool_id, skill.clone()));
+    }
+
+    // Detect within-tool duplicates: same skill name appearing multiple times
+    // in the same tool's directory (e.g., two directories with the same YAML name)
+    for (name, entries) in &by_name {
+        let mut per_tool: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+        for (tid, _) in entries {
+            *per_tool.entry(*tid).or_insert(0) += 1;
+        }
+        for (tid, count) in per_tool {
+            if count > 1 {
+                let tname = tool_name_map.get(&tid).cloned().unwrap_or_default();
+                all_errors.push(format!(
+                    "Warning: skill name '{}' found {} times in tool '{}'. Only the first occurrence is used.",
+                    name, count, tname
+                ));
+            }
+        }
     }
 
     // Upsert one record per unique skill name, then create installations for each tool
@@ -154,7 +172,7 @@ fn scan_tool_paths(
     // Log scan operation
     let status = if all_errors.is_empty() { "success" } else { "failed" };
     let log_detail = if all_errors.is_empty() {
-        format!("found={}, new={}, updated={}", by_name.len(), skills_new, skills_updated)
+        format!("found={}, new={}, updated={}", all_skills.len(), skills_new, skills_updated)
     } else {
         all_errors.join("; ")
     };
@@ -168,7 +186,7 @@ fn scan_tool_paths(
     );
 
     Ok(ScanResult {
-        skills_found: by_name.len(),
+        skills_found: all_skills.len(),
         skills_new,
         skills_updated,
         errors: all_errors,
@@ -193,7 +211,7 @@ fn do_sync_skill(
 
     // Ensure SSOT directory exists
     sync::ensure_ssot_dir()?;
-    let ssot_target = sync::ssot_path(&skill.name)?;
+    let ssot_target = sync::ssot_path(&skill.name, project_id)?;
 
     // Step 1: Copy to SSOT (replace if target already exists)
     let to_ssot_result = if prefer_symlink {
@@ -486,10 +504,11 @@ async fn sync_all_pending(db: State<'_, DbState>) -> Result<Vec<SyncResult>, Str
 }
 
 /// Check if any tool directory for a skill differs from SSOT.
-/// Returns Some(SkillUpdate) if a change is detected, None if all in sync.
-fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate>, String> {
+/// Returns a Vec of SkillUpdate — one per divergent tool (P0-3 fix: no early return).
+/// Scoped to project_id (P0-2 fix: only checks installations in the given project).
+fn check_single_skill(db: &Database, skill_id: i64, project_id: i64) -> Result<Vec<SkillUpdate>, String> {
     let skill = db.get_skill_by_id(skill_id)?;
-    let ssot = sync::ssot_path(&skill.name)?;
+    let ssot = sync::ssot_path(&skill.name, project_id)?;
 
     // Compute SSOT hash (None if SSOT doesn't exist yet)
     let ssot_hash = if ssot.exists() {
@@ -498,9 +517,11 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
         None
     };
 
-    // Check all active installation paths against SSOT
-    if let Ok(installations) = db.get_all_active_paths(skill_id) {
-        for (tool_id, tool_name, install_path) in &installations {
+    let mut updates = Vec::new();
+
+    // Check all active installation paths (scoped to project) against SSOT
+    if let Ok(installations) = db.get_active_installation_paths(skill_id, project_id) {
+        for (tool_id, install_path) in &installations {
             let path = PathBuf::from(install_path);
             if !path.exists() {
                 continue;
@@ -514,17 +535,17 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
                         if db.is_update_dismissed(skill_id, *tool_id, &install_hash).unwrap_or(false) {
                             continue;
                         }
-                        // This tool directory differs from SSOT
+                        let tool_name = db.get_tool_name(*tool_id).unwrap_or_default();
                         let old_hash = ssot_hash.clone().unwrap_or_default();
-                        return Ok(Some(SkillUpdate {
+                        updates.push(SkillUpdate {
                             skill_id,
                             skill_name: skill.name.clone(),
                             source_path: install_path.clone(),
                             old_hash,
                             new_hash: install_hash,
-                            changed_tool: Some(tool_name.clone()),
+                            changed_tool: Some(tool_name),
                             changed_tool_id: Some(*tool_id),
-                        }));
+                        });
                     }
                 }
             }
@@ -538,46 +559,53 @@ fn check_single_skill(db: &Database, skill_id: i64) -> Result<Option<SkillUpdate
             match &ssot_hash {
                 Some(sh) if *sh == source_hash => {} // in sync
                 _ => {
-                    let old_hash = ssot_hash.unwrap_or_default();
-                    return Ok(Some(SkillUpdate {
-                        skill_id,
-                        skill_name: skill.name.clone(),
-                        source_path: skill.source_path.clone(),
-                        old_hash,
-                        new_hash: source_hash,
-                        changed_tool: None,
-                        changed_tool_id: None,
-                    }));
+                    let old_hash = ssot_hash.clone().unwrap_or_default();
+                    // Only add if not already covered by an installation check
+                    if !updates.iter().any(|u| u.source_path == skill.source_path) {
+                        updates.push(SkillUpdate {
+                            skill_id,
+                            skill_name: skill.name.clone(),
+                            source_path: skill.source_path.clone(),
+                            old_hash,
+                            new_hash: source_hash,
+                            changed_tool: None,
+                            changed_tool_id: None,
+                        });
+                    }
                 }
             }
         }
     }
 
-    // Auto-refresh DB content_hash from source if everything is in sync
-    if let Some(sh) = &ssot_hash {
-        if sh != &skill.content_hash {
-            let _ = db.update_content_hash(skill_id, sh);
+    // Auto-refresh DB content_hash from SSOT if everything is in sync
+    if updates.is_empty() {
+        if let Some(sh) = &ssot_hash {
+            if sh != &skill.content_hash {
+                let _ = db.update_content_hash(skill_id, sh);
+            }
         }
     }
 
-    Ok(None)
+    Ok(updates)
 }
 
 #[tauri::command]
 async fn check_updates(
     db: State<'_, DbState>,
-    _project_id: Option<i64>,
+    project_id: Option<i64>,
 ) -> Result<Vec<SkillUpdate>, String> {
     let db = db.inner().clone();
+    let pid = project_id.unwrap_or(0);
 
     tokio::task::spawn_blocking(move || -> Result<Vec<SkillUpdate>, String> {
-        let skills = db.get_all_skills_for_update_check()?;
+        // P0-2 fix: only check skills in the specified project
+        let skills = db.get_project_skills_for_update_check(pid)?;
         let mut updates = Vec::new();
 
         for (skill_id, _skill_name, _source_path, _old_hash) in &skills {
-            match check_single_skill(&db, *skill_id) {
-                Ok(Some(update)) => updates.push(update),
-                Ok(None) => {} // in sync
+            // P0-3 fix: collect ALL divergent tools per skill
+            match check_single_skill(&db, *skill_id, pid) {
+                Ok(mut skill_updates) => updates.append(&mut skill_updates),
                 Err(_) => continue,
             }
         }
@@ -592,10 +620,12 @@ async fn check_updates(
 async fn check_skill_update(
     db: State<'_, DbState>,
     skill_id: i64,
-) -> Result<Option<SkillUpdate>, String> {
+    project_id: Option<i64>,
+) -> Result<Vec<SkillUpdate>, String> {
     let db = db.inner().clone();
+    let pid = project_id.unwrap_or(0);
 
-    tokio::task::spawn_blocking(move || check_single_skill(&db, skill_id))
+    tokio::task::spawn_blocking(move || check_single_skill(&db, skill_id, pid))
         .await
         .map_err(|e| format!("Task join error: {}", e))?
 }
@@ -613,7 +643,7 @@ async fn get_skill_diff(
         let source = PathBuf::from(
             source_path.as_deref().unwrap_or(&skill.source_path),
         );
-        let ssot = sync::ssot_path(&skill.name)?;
+        let ssot = sync::ssot_path(&skill.name, skill.project_id)?;
 
         diff::compute_skill_diff(&source, &ssot, &skill.name)
     })
@@ -660,7 +690,7 @@ async fn resolve_conflict(
 
         // Sync the kept version to SSOT
         sync::ensure_ssot_dir()?;
-        let ssot_target = sync::ssot_path(&skill.name)?;
+        let ssot_target = sync::ssot_path(&skill.name, pid)?;
 
         if ssot_target.exists() {
             sync::replace_directory(&source, &ssot_target)?;
@@ -742,7 +772,7 @@ async fn reverse_sync_skill(
 
     tokio::task::spawn_blocking(move || -> Result<SyncResult, String> {
         let skill = db.get_skill_by_id(skill_id)?;
-        let ssot = sync::ssot_path(&skill.name)?;
+        let ssot = sync::ssot_path(&skill.name, pid)?;
 
         if !ssot.exists() {
             return Err("SSOT directory does not exist. Sync to SSOT first.".to_string());

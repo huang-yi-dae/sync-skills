@@ -132,11 +132,17 @@ pub fn is_local_skill(dir: &Path) -> bool {
     dir.join("local.md").exists()
 }
 
-/// Get the SSOT path for a skill by name.
-/// Returns `~/.agents/skills/local/<skill-name>/`
-pub fn ssot_path(skill_name: &str) -> Result<PathBuf, String> {
+/// Get the SSOT path for a skill.
+/// Global (project_id=0): `~/.agents/skills/local/<skill-name>/`
+/// Project (project_id>0): `~/.agents/skills/local/_p<project_id>/<skill-name>/`
+pub fn ssot_path(skill_name: &str, project_id: i64) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    Ok(home.join(".agents").join("skills").join("local").join(skill_name))
+    let base = home.join(".agents").join("skills").join("local");
+    if project_id == 0 {
+        Ok(base.join(skill_name))
+    } else {
+        Ok(base.join(format!("_p{}", project_id)).join(skill_name))
+    }
 }
 
 /// Ensure the SSOT base directory exists.

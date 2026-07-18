@@ -1275,9 +1275,9 @@ body::before {
 /* ==================== Updates Modal ==================== */
 
 .updates-modal {
-  min-width: 600px;
-  max-width: 780px;
-  max-height: 80vh;
+  min-width: 680px;
+  max-width: 860px;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
 }
@@ -1285,10 +1285,76 @@ body::before {
 .updates-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
+  gap: 10px;
+  max-height: 50vh;
   overflow-y: auto;
   margin-bottom: 4px;
+}
+
+.update-item-group {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.update-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.update-count-badge {
+  background: var(--accent-glow);
+  color: var(--accent);
+  padding: 1px 8px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.update-item-tool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.update-item-tool:last-of-type {
+  border-bottom: none;
+}
+
+.update-tool-name {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 100px;
+  margin-right: 8px;
+}
+
+.update-group-actions {
+  padding: 8px 14px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+
+.diff-tool-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent-glow);
+  color: var(--accent);
+  margin-left: auto;
 }
 
 .update-item {

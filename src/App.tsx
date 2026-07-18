@@ -739,7 +739,7 @@ function App() {
   async function handleCheckUpdates() {
     setCheckingUpdates(true);
     try {
-      const result = await invoke<SkillUpdate[]>("check_updates");
+      const result = await invoke<SkillUpdate[]>("check_updates", { projectId: selectedProject });
       setUpdates(result);
       if (result.length > 0) {
         setShowUpdatesModal(true);
@@ -756,15 +756,16 @@ function App() {
   async function handleCheckSingleSkill(skillId: number) {
     setCheckingSingle(skillId);
     try {
-      const result = await invoke<SkillUpdate | null>("check_skill_update", { skillId });
-      if (result) {
-        // Found update — open diff view
-        const diff = await invoke<SkillDiff>("get_skill_diff", { skillId, sourcePath: result.source_path });
-        setSelectedUpdateDiff({ update: result, diff });
+      const result = await invoke<SkillUpdate[]>("check_skill_update", { skillId, projectId: selectedProject });
+      if (result.length > 0) {
+        // Found updates — add all to updates list, show diff for the first one
         setUpdates((prev) => {
           const filtered = prev.filter((u) => u.skill_id !== skillId);
-          return [...filtered, result];
+          return [...filtered, ...result];
         });
+        const firstUpdate = result[0];
+        const diff = await invoke<SkillDiff>("get_skill_diff", { skillId, sourcePath: firstUpdate.source_path });
+        setSelectedUpdateDiff({ update: firstUpdate, diff });
         setShowUpdatesModal(true);
       } else {
         addToast("info", `${t("inSync")}`);
@@ -1811,6 +1812,9 @@ function App() {
                 <div className="diff-header">
                   <button className="btn btn-small" onClick={() => setSelectedUpdateDiff(null)}>&larr; {t("back")}</button>
                   <h3 className="diff-title">{selectedUpdateDiff.update.skill_name}</h3>
+                  {selectedUpdateDiff.update.changed_tool && (
+                    <span className="diff-tool-badge">{selectedUpdateDiff.update.changed_tool}</span>
+                  )}
                 </div>
                 <div className="diff-meta">
                   <span className="diff-path" title={selectedUpdateDiff.diff.source_path}>
@@ -1884,43 +1888,62 @@ function App() {
               <>
                 <h3>{t("updatesAvailable")} ({updates.length})</h3>
                 <div className="updates-list">
-                  {updates.map((u) => (
-                    <div key={u.skill_id} className="update-item">
-                      <div className="update-item-info">
-                        <span className="update-skill-name">{u.skill_name}</span>
-                        <code className="update-path" title={u.source_path}>{u.source_path}</code>
-                      </div>
-                      <div className="update-item-actions">
-                        <button
-                          className="btn btn-small"
-                          onClick={() => handleViewDiff(u)}
-                          disabled={loadingDiff === u.skill_id}
-                        >
-                          {loadingDiff === u.skill_id ? t("loading") : t("viewDiff")}
-                        </button>
-                        <button
-                          className="btn btn-small btn-primary"
-                          onClick={() => handleUpdateFromDiff(u.skill_id)}
-                        >
-                          {t("update")}
-                        </button>
-                        <button
-                          className="btn btn-small"
-                          onClick={() => handleSkipUpdate(u.skill_id)}
-                        >
-                          {t("skip")}
-                        </button>
-                        {u.changed_tool_id && (
+                  {(() => {
+                    // Group updates by skill_id
+                    const grouped = new Map<number, SkillUpdate[]>();
+                    for (const u of updates) {
+                      const list = grouped.get(u.skill_id) || [];
+                      list.push(u);
+                      grouped.set(u.skill_id, list);
+                    }
+                    return Array.from(grouped.entries()).map(([skillId, skillUpdates]) => (
+                      <div key={skillId} className="update-item-group">
+                        <div className="update-item-header">
+                          <span className="update-skill-name">{skillUpdates[0].skill_name}</span>
+                          <span className="update-count-badge">{skillUpdates.length} {t("toolUnit")}</span>
+                        </div>
+                        {skillUpdates.map((u, idx) => (
+                          <div key={idx} className="update-item update-item-tool">
+                            <div className="update-item-info">
+                              {u.changed_tool && <span className="update-tool-name">{u.changed_tool}</span>}
+                              <code className="update-path" title={u.source_path}>{u.source_path}</code>
+                            </div>
+                            <div className="update-item-actions">
+                              <button
+                                className="btn btn-small"
+                                onClick={() => handleViewDiff(u)}
+                                disabled={loadingDiff === u.skill_id}
+                              >
+                                {loadingDiff === u.skill_id ? t("loading") : t("viewDiff")}
+                              </button>
+                              {u.changed_tool_id && (
+                                <button
+                                  className="btn btn-small"
+                                  onClick={() => handleDismissUpdate(u)}
+                                >
+                                  {t("dismissChange")}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="update-item-actions update-group-actions">
+                          <button
+                            className="btn btn-small btn-primary"
+                            onClick={() => handleUpdateFromDiff(skillId)}
+                          >
+                            {t("updateToSsot")}
+                          </button>
                           <button
                             className="btn btn-small"
-                            onClick={() => handleDismissUpdate(u)}
+                            onClick={() => handleSkipUpdate(skillId)}
                           >
-                            {t("dismissChange")}
+                            {t("skip")}
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
                 <div className="modal-actions">
                   <button className="btn btn-secondary" onClick={() => setShowUpdatesModal(false)}>{t("close")}</button>

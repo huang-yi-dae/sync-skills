@@ -1103,6 +1103,33 @@ impl Database {
         Ok(skills)
     }
 
+    /// Get skills for update check, filtered by project_id
+    pub fn get_project_skills_for_update_check(
+        &self,
+        project_id: i64,
+    ) -> Result<Vec<(i64, String, String, String)>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, name, source_path, content_hash FROM skills WHERE project_id = ?1")
+            .map_err(|e| format!("Prepare error: {}", e))?;
+
+        let skills = stmt
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(skills)
+    }
+
     // ==================== M3: Project Management ====================
 
     /// List all projects
